@@ -11,9 +11,24 @@ export class LevelManager {
     private static _levelIndex: number = -1;
     /** 每关状态（开发阶段不存档，重进游戏自动重置） */
     private static _levelStates: LevelState[] = [];
+    /** Scratch-imported pack — survives until a normal level pick overwrites it */
+    private static _scratchPack = false;
 
     static setCurrent(data: LevelData): void {
         LevelManager._current = data;
+    }
+
+    /** Mark current level as coming from Scratch COINMOD1 (solo play). */
+    static setScratchLevel(data: LevelData): void {
+        LevelManager._current = data;
+        LevelManager._scratchPack = true;
+        LevelManager._levelFiles = ['scratch'];
+        LevelManager._levelIndex = 0;
+        LevelManager._levelStates = [LevelState.Unlocked];
+    }
+
+    static isScratchPack(): boolean {
+        return LevelManager._scratchPack;
     }
 
     static getCurrent(): LevelData | null {
@@ -22,6 +37,7 @@ export class LevelManager {
 
     /** 设置关卡文件列表和当前索引（由 LevelsScene 调用），同时初始化关卡状态 */
     static setLevelList(files: string[], index: number): void {
+        LevelManager._scratchPack = false;
         LevelManager._levelFiles = files;
         LevelManager._levelIndex = index;
         // 首次初始化：全部 Locked，第一个自动 Unlocked
@@ -73,5 +89,6 @@ export class LevelManager {
         LevelManager._current = null;
         LevelManager._levelFiles = [];
         LevelManager._levelIndex = -1;
+        LevelManager._scratchPack = false;
     }
 }

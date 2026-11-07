@@ -9,7 +9,9 @@ export class TestImpulse extends Component {
             const rb = this.getComponent(RigidBody2D);
             if (rb) {
                 // 给一个冲量，模拟弹射效果
-                rb.applyLinearImpulse(new Vec2(50, 20), rb.getWorldCenter(), true);
+                const center = new Vec2();
+                rb.getWorldCenter(center);
+                rb.applyLinearImpulse(new Vec2(50, 20), center, true);
                 console.log("测试推力已施加");
             }
         }, 0.5);

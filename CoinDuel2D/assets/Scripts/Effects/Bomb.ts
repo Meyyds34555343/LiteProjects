@@ -65,7 +65,7 @@ export class Bomb extends Component {
 
     /** 爆炸时对范围内硬币施加径向推力，并销毁范围内的障碍物 */
     private _applyExplosion(): void {
-        SoundManager.instance.playExplosion();
+        SoundManager.instance?.playExplosion();
         Bomb.applyExplosionAt(this.node.worldPosition, {
             pushRadius: this.pushRadius,
             pushForce: this.pushForce,

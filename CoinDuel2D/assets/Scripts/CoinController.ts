@@ -3,6 +3,34 @@ import { GameLogic } from './GameLogic';
 import { SoundManager } from './SoundManager';
 const { ccclass } = _decorator;
 
+/** memes.json 中单个硬币的外观配置 */
+export interface MemeCoinConfig {
+    name?: string;
+    texture?: string;
+    idleTexture?: string;
+    aimTexture?: string;
+    shotTexture?: string;
+    hittedTexture?: string;
+    shotSfx?: string;
+    hittedSfx?: string;
+}
+
+/** memes.json 的顶层结构 */
+export interface MemeConfig {
+    coins?: Record<string, MemeCoinConfig>;
+}
+
+/** 已加载到内存的硬币外观资源 */
+interface CoinAppearanceAssets {
+    defaultFrame: SpriteFrame | null;
+    idleFrame: SpriteFrame | null;
+    aimFrame: SpriteFrame | null;
+    shotFrame: SpriteFrame | null;
+    hittedFrame: SpriteFrame | null;
+    shotSfxClip: AudioClip | null;
+    hittedSfxClip: AudioClip | null;
+}
+
 @ccclass('CoinController')
 export class CoinController extends Component {
     public static showArrow: boolean = false;
@@ -12,6 +40,15 @@ export class CoinController extends Component {
     public static sourceColor: Color = Color.YELLOW;
     /** 从 config.json 读取的 target_color */
     public static targetColor: Color = Color.GREEN;
+
+    /** memes.json 数据（由 GameScene 加载后注入） */
+    private static _memesConfig: MemeConfig | null = null;
+    /** 已加载的外观资源缓存，key 为 memes.json 中的 class */
+    private static readonly _appearanceCache = new Map<string, CoinAppearanceAssets>();
+    /** 正在加载中的外观资源，同一 key 的请求合并等待 */
+    private static readonly _appearanceLoading = new Map<string, ((assets: CoinAppearanceAssets) => void)[]>();
+    /** memes.json 尚未加载时暂存的硬币外观请求，配置就绪后补应用 */
+    private static _pendingAppearances: { node: Node; key: string }[] = [];
 
     /**
      * 获取硬币的 Sprite 组件。
@@ -24,6 +61,136 @@ export class CoinController extends Component {
             if (s) return s;
         }
         return node.getComponent(Sprite);
+    }
+
+    /** 注入 memes.json 数据，并补应用初始化时配置尚未加载的硬币 */
+    public static setMemesConfig(config: MemeConfig | null): void {
+        CoinController._memesConfig = config ?? null;
+        CoinController._appearanceCache.clear();
+
+        const pending = CoinController._pendingAppearances;
+        CoinController._pendingAppearances = [];
+        for (const item of pending) {
+            CoinController.applyMemeAppearance(item.node, item.key);
+        }
+    }
+
+    /**
+     * 根据关卡 class 查找 memes.json 中的配置并初始化硬币贴图/音效。
+     * 配置尚未加载时先记下请求，待 setMemesConfig 后自动补应用。
+     */
+    public static applyMemeAppearance(node: Node, classKey: number | string | null | undefined): void {
+        if (classKey === null || classKey === undefined || classKey === '') return;
+        const key = String(classKey);
+        const config = CoinController._memesConfig?.coins?.[key];
+        if (!config) {
+            if (!CoinController._memesConfig) {
+                const index = CoinController._pendingAppearances.findIndex((item) => item.node === node);
+                if (index >= 0) CoinController._pendingAppearances[index].key = key;
+                else CoinController._pendingAppearances.push({ node, key });
+            } else {
+                console.log(`[CoinController] memes.json 中未找到 class "${key}" 的配置，保持默认外观`);
+            }
+            return;
+        }
+
+        CoinController._loadAppearance(key, config, (assets) => {
+            if (!node.isValid) return;
+            const ctrl = node.getComponent(CoinController);
+            if (ctrl) {
+                ctrl.setAppearance({
+                    defaultFrame: assets.defaultFrame,
+                    idleFrame: assets.idleFrame,
+                    aimFrame: assets.aimFrame,
+                    shotFrame: assets.shotFrame,
+                    hittedFrame: assets.hittedFrame,
+                    shotSfxClip: assets.shotSfxClip,
+                    hittedSfxClip: assets.hittedSfxClip,
+                    typeKey: key,
+                });
+            } else {
+                // 环境硬币没有 CoinController，只需要静态贴图
+                const sprite = CoinController.getCoinSprite(node);
+                if (sprite && assets.defaultFrame) sprite.spriteFrame = assets.defaultFrame;
+            }
+        });
+    }
+
+    /** 加载（并缓存）某个 class 的外观资源；同一 key 并发请求共用一次加载 */
+    private static _loadAppearance(
+        key: string,
+        config: MemeCoinConfig,
+        cb: (assets: CoinAppearanceAssets) => void,
+    ): void {
+        const cached = CoinController._appearanceCache.get(key);
+        if (cached) {
+            cb(cached);
+            return;
+        }
+        const waiters = CoinController._appearanceLoading.get(key);
+        if (waiters) {
+            waiters.push(cb);
+            return;
+        }
+
+        const callbacks: ((assets: CoinAppearanceAssets) => void)[] = [cb];
+        CoinController._appearanceLoading.set(key, callbacks);
+
+        const assets: CoinAppearanceAssets = {
+            defaultFrame: null,
+            idleFrame: null,
+            aimFrame: null,
+            shotFrame: null,
+            hittedFrame: null,
+            shotSfxClip: null,
+            hittedSfxClip: null,
+        };
+
+        let remaining = 0;
+        let finished = false;
+        const finish = () => {
+            if (finished) return;
+            finished = true;
+            CoinController._appearanceLoading.delete(key);
+            CoinController._appearanceCache.set(key, assets);
+            for (const callback of callbacks) callback(assets);
+        };
+        const onAssetDone = () => {
+            remaining--;
+            if (remaining <= 0) finish();
+        };
+
+        // 图片资源需指定 SpriteFrame 子资源路径
+        const loadFrame = (file: string | undefined, assign: (frame: SpriteFrame) => void) => {
+            if (!file) return;
+            remaining++;
+            const base = file.replace(/\.[^/.]+$/, '');
+            resources.load(base + '/spriteFrame', SpriteFrame, (err, frame) => {
+                if (!err && frame) assign(frame);
+                else console.warn(`[CoinController] 加载贴图 ${file} 失败:`, err);
+                onAssetDone();
+            });
+        };
+        const loadClip = (file: string | undefined, assign: (clip: AudioClip) => void) => {
+            if (!file) return;
+            remaining++;
+            const base = file.replace(/\.[^/.]+$/, '');
+            resources.load(base, AudioClip, (err, clip) => {
+                if (!err && clip) assign(clip);
+                else console.warn(`[CoinController] 加载音效 ${file} 失败:`, err);
+                onAssetDone();
+            });
+        };
+
+        loadFrame(config.texture, (frame) => { assets.defaultFrame = frame; });
+        loadFrame(config.idleTexture, (frame) => { assets.idleFrame = frame; });
+        loadFrame(config.aimTexture, (frame) => { assets.aimFrame = frame; });
+        loadFrame(config.shotTexture, (frame) => { assets.shotFrame = frame; });
+        loadFrame(config.hittedTexture, (frame) => { assets.hittedFrame = frame; });
+        loadClip(config.shotSfx, (clip) => { assets.shotSfxClip = clip; });
+        loadClip(config.hittedSfx, (clip) => { assets.hittedSfxClip = clip; });
+
+        if (remaining === 0) finish();
     }
 
     private _allowedOperation: boolean = false;
@@ -45,14 +212,12 @@ export class CoinController extends Component {
 
     /** 经墙面限位后的拖拽向量（箭头尾部不进入墙内） */
     private _clampedDragVec: Vec2 = new Vec2();
-    /** 鼠标是否位于墙内（用于触发拒绝音效） */
-    private _mouseInWall: boolean = false;
     /** 上一次拖拽距离（用于判断增加/减少音效） */
     private _lastDragDist: number = 0;
     /** 当前拖拽方向音效状态：'increase' | 'decrease' | null */
     private _dragSoundDir: 'increase' | 'decrease' | null = null;
 
-    /** 当前硬币类型（config.json 中的 key，如 "1", "2"） */
+    /** 当前硬币类型（memes.json 中的 key，如 "1", "2"） */
     private _coinTypeKey: string = '';
     /** 当前贴图状态：默认/空闲/拖拽/发射/被打击 */
     private _textureState: 'default' | 'idle' | 'aim' | 'shot' | 'hit' = 'default';
@@ -100,7 +265,7 @@ export class CoinController extends Component {
         return this._hittedSfxClip;
     }
 
-    /** 获取 config.json 中配置的默认贴图（texture 字段） */
+    /** 获取 memes.json 中配置的默认贴图（texture 字段） */
     public get defaultFrame(): SpriteFrame | null {
         return this._defaultFrame;
     }
@@ -168,10 +333,11 @@ export class CoinController extends Component {
         let frame: SpriteFrame | null = null;
         switch (this._textureState) {
             case 'default': frame = this._defaultFrame; break;
-            case 'idle':    frame = this._idleFrame; break;
-            case 'aim':     frame = this._aimFrame; break;
-            case 'shot':    frame = this._shotFrame; break;
-            case 'hit':     frame = this._hittedFrame; break;
+            // 状态贴图未配置时回退到默认贴图（如行为硬币只配置了 texture）
+            case 'idle':    frame = this._idleFrame ?? this._defaultFrame; break;
+            case 'aim':     frame = this._aimFrame ?? this._defaultFrame; break;
+            case 'shot':    frame = this._shotFrame ?? this._defaultFrame; break;
+            case 'hit':     frame = this._hittedFrame ?? this._defaultFrame; break;
         }
         if (frame) sprite.spriteFrame = frame;
     }
@@ -272,12 +438,10 @@ export class CoinController extends Component {
             this._clearTargetableAll();
         }
 
-        // 复位拖拽距离和预测
+        // 复位拖拽距离
         this._gameLogic?.setDragDistance(0);
-        this._clearPredictedTarget();
         this._hideDragArrow();
 
-        this._mouseInWall = false;
         this._lastDragDist = 0;
         this._dragSoundDir = null;
         this._isDragging = true;
@@ -291,7 +455,7 @@ export class CoinController extends Component {
         event.getLocation(CoinController._lastWorldPos);
 
         // 开始循环播放拖拽音效
-        SoundManager.instance.startCoinDrag();
+        SoundManager.instance?.startCoinDrag();
 
         // 其他硬币高亮为绿色（表示可被打击）
         const coinGroup = this._gameLogic?.coinGroup;
@@ -328,15 +492,12 @@ export class CoinController extends Component {
         this.node.off(Node.EventType.TOUCH_CANCEL, this._onPointerUp, this);
     }
 
-    /** 当前高亮的预测目标硬币 */
-    private _predictedTarget: Node | null = null;
-
     private _onTouchMove(event: EventTouch): void {
         // 持续缓存鼠标位置，供 update 轮询兜底
         event.getLocation(CoinController._lastWorldPos);
         if (!this._isDragging) return;
         // 播放一次拖拽音效（若已在播放则跳过）
-        SoundManager.instance.startCoinDrag();
+        SoundManager.instance?.startCoinDrag();
         // 先绘制箭头（计算墙面限位后的拖拽向量）
         this._drawDragLine(event);
         // 距离增加/减少音效
@@ -346,30 +507,7 @@ export class CoinController extends Component {
         const dy = this._clampedDragVec.y;
         if (this._gameLogic) {
             this._gameLogic.setDragDistance(Math.sqrt(dx * dx + dy * dy));
-            // 预测目标硬币并高亮
-            const hem = this._gameLogic.hitEffectManager;
-            if (hem?.enableDragPrediction) {
-                const dir = new Vec2(-dx, -dy);
-                const len = dir.length();
-                if (len > 0.001) { dir.x /= len; dir.y /= len; }
-                const coinRadius = this._gameLogic?.coinRadius ?? 32;
-                const predicted = hem.predictHitCoin(this.node.position, dir, coinRadius);
-                this._setPredictedTarget(predicted);
-            }
         }
-    }
-
-    /** 高亮/取消高亮预测目标硬币 */
-    private _setPredictedTarget(coin: Node | null): void {
-        if (this._predictedTarget && this._predictedTarget !== coin) {
-            const oldSprite = CoinController.getCoinSprite(this._predictedTarget);
-            if (oldSprite) oldSprite.color = Color.WHITE;
-        }
-        if (coin) {
-            const sprite = CoinController.getCoinSprite(coin);
-            if (sprite) sprite.color = new Color(255, 100, 100);
-        }
-        this._predictedTarget = coin;
     }
 
     /** 设置本硬币的可被打击高亮状态（绿色脉冲） */
@@ -408,62 +546,20 @@ export class CoinController extends Component {
         this._dragSoundDir = dir;
 
         if (dir === 'increase') {
-            SoundManager.instance.startDragIncreaseLoop();
+            SoundManager.instance?.startDragIncreaseLoop();
         } else if (dir === 'decrease') {
-            SoundManager.instance.startDragDecreaseLoop();
+            SoundManager.instance?.startDragDecreaseLoop();
         } else {
-            SoundManager.instance.stopDragDirectionLoop();
+            SoundManager.instance?.stopDragDirectionLoop();
         }
     }
 
     /**
-     * 计算经墙面限位后的拖拽向量。
-     * 箭头尾部 = 硬币位置 + 拖拽向量，不能超出桌面可玩区域（墙内），
-     * 超出时截断到边界，确保力度计算基于实际可视的箭头长度。
+     * 拖曳向量就是手指拉離的距離。
+     * 發射和瞄準線都往反方向，所以拉出桌邊不該把力道截短。
      */
     private _calcClampedDrag(rawDx: number, rawDy: number): Vec2 {
-        const gl = this._gameLogic;
-        if (!gl) return new Vec2(rawDx, rawDy);
-
-        // 箭头尾部可到墙内边缘（不受硬币半径限制）
-        const halfW = gl.tableWidth / 2 - gl.wallThickness;
-        const halfH = gl.tableHeight / 2 - gl.wallThickness;
-        const coinPos = this.node.position;
-
-        // 箭头尾部原始位置
-        let tailX = coinPos.x + rawDx;
-        let tailY = coinPos.y + rawDy;
-
-        // 检测鼠标是否超出墙内（触发拒绝音效 + 摄像机震动）
-        const nowInWall = Math.abs(tailX) > halfW || Math.abs(tailY) > halfH;
-        if (nowInWall && !this._mouseInWall) {
-            SoundManager.instance.startNegative();
-            // 震动方向：硬币中心 → 鼠标位置（= raw 拖拽向量方向）
-            const hem = this._gameLogic.hitEffectManager;
-            if (hem) {
-                const dir = new Vec2(rawDx, rawDy);
-                const len = dir.length();
-                if (len > 0.001) { dir.x /= len; dir.y /= len; }
-                hem.shakeCamera(0.1, dir);
-            }
-        }
-        this._mouseInWall = nowInWall;
-
-        // 限位到可玩区域
-        tailX = Math.max(-halfW, Math.min(halfW, tailX));
-        tailY = Math.max(-halfH, Math.min(halfH, tailY));
-
-        // 从限位后的尾部反算拖拽向量
-        return new Vec2(tailX - coinPos.x, tailY - coinPos.y);
-    }
-
-    /** 清理预测高亮 */
-    private _clearPredictedTarget(): void {
-        if (this._predictedTarget) {
-            const sprite = CoinController.getCoinSprite(this._predictedTarget);
-            if (sprite) sprite.color = Color.WHITE;
-            this._predictedTarget = null;
-        }
+        return new Vec2(rawDx, rawDy);
     }
 
     /** 创建或获取拖拽箭头 Sprite */
@@ -550,14 +646,13 @@ export class CoinController extends Component {
         if (this._gameLogic?.tutorialManager) this._gameLogic.tutorialManager.isDragging = false;
         this._unregisterGlobalEvents();
 
-        // 复位拖拽距离和预测
+        // 复位拖拽距离
         this._gameLogic?.setDragDistance(0);
-        this._clearPredictedTarget();
         this._hideDragArrow();
         this._clearTargetableAll();
         this._gameLogic?.clearAimLine();
-        SoundManager.instance.stopDragDirectionLoop();
-        SoundManager.instance.playDragRelease();
+        SoundManager.instance?.stopDragDirectionLoop();
+        SoundManager.instance?.playDragRelease();
 
         if (!this._rigidBody) return;
 
@@ -582,7 +677,7 @@ export class CoinController extends Component {
         } else {
             // fallback：直接发射
             this._rigidBody.linearVelocity = velocity;
-            SoundManager.instance.playShot();
+            SoundManager.instance?.playShot();
         }
     }
 }

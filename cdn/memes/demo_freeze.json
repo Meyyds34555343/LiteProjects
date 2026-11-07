@@ -1,0 +1,13 @@
+{
+  "id": "demo_freeze",
+  "behavior": "FreezeBehavior",
+  "behaviors": ["FreezeBehavior"],
+  "radius": 32,
+  "textures": {
+    "default": "textures/demo_freeze.png",
+    "idle": "textures/demo_freeze.png",
+    "aim": "textures/demo_freeze.png",
+    "shot": "textures/demo_freeze.png",
+    "hitted": "textures/demo_freeze.png"
+  }
+}

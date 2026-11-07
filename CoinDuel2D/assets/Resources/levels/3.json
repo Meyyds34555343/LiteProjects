@@ -2,12 +2,44 @@
     "id": 3,
     "width": 800,
     "height": 600,
-    "wall": { "thickness": 64 },
+    "wall": {
+        "thickness": 64
+    },
     "coins": [
-        { "type": "coin", "class": 1, "x": -200, "y": 180 },
-        { "type": "coin", "class": 1, "x": 200, "y": 180 },
-        { "type": "coin", "class": 1, "x": 0, "y": -60 },
-        { "type": "coin", "class": 1, "x": -160, "y": -140 },
-        { "type": "coin", "class": 1, "x": 160, "y": -140 }
+        {
+            "type": "coin",
+            "class": 1,
+            "x": -200,
+            "y": 180,
+            "canshot": true
+        },
+        {
+            "type": "coin",
+            "class": 1,
+            "x": 200,
+            "y": 180,
+            "canshot": true
+        },
+        {
+            "type": "coin",
+            "class": 1,
+            "x": 0,
+            "y": -60,
+            "canshot": false
+        },
+        {
+            "type": "coin",
+            "class": 1,
+            "x": -160,
+            "y": -140,
+            "canshot": true
+        },
+        {
+            "type": "coin",
+            "class": 1,
+            "x": 160,
+            "y": -140,
+            "canshot": true
+        }
     ]
 }

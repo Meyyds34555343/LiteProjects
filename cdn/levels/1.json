@@ -1,0 +1,87 @@
+{
+    "id": 1,
+    "width": 800,
+    "height": 600,
+    "wall": {
+        "thickness": 64
+    },
+    "coins": [
+        {
+            "type": "coin",
+            "class": 1,
+            "x": -264,
+            "y": 176,
+            "canshot": true
+        },
+        {
+            "type": "coin",
+            "class": 2,
+            "x": -170,
+            "y": -167,
+            "canshot": true,
+            "behaviors": [
+                "NoneBehavior"
+            ]
+        },
+        {
+            "type": "coin",
+            "class": 3,
+            "x": -299,
+            "y": -202,
+            "canshot": false,
+            "behaviors": [
+                "BombBehavior"
+            ]
+        },
+        {
+            "type": "coin",
+            "class": 5,
+            "x": 32,
+            "y": 75,
+            "canshot": false,
+            "behaviors": [
+                "FlashStepBehavior"
+            ]
+        },
+        {
+            "type": "coin",
+            "class": 4,
+            "x": -41,
+            "y": -177,
+            "canshot": false,
+            "behaviors": [
+                "FreezeBehavior"
+            ]
+        },
+        {
+            "type": "coin",
+            "class": 6,
+            "x": 168,
+            "y": -142,
+            "canshot": false,
+            "behaviors": [
+                "MudBehavior"
+            ]
+        },
+        {
+            "type": "coin",
+            "class": 8,
+            "x": 289,
+            "y": 198,
+            "canshot": false,
+            "behaviors": [
+                "MagnetBehavior"
+            ]
+        },
+        {
+            "type": "coin",
+            "class": 7,
+            "x": 286,
+            "y": -112,
+            "canshot": false,
+            "behaviors": [
+                "BlockerBehavior"
+            ]
+        }
+    ]
+}

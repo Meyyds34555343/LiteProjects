@@ -1,0 +1,33 @@
+{
+  "id": 9001,
+  "width": 800,
+  "height": 600,
+  "wall": { "thickness": 64 },
+  "coins": [
+    {
+      "type": "coin",
+      "class": 1,
+      "x": -160,
+      "y": 0,
+      "canshot": true
+    },
+    {
+      "type": "coin",
+      "class": 4,
+      "x": 120,
+      "y": 40,
+      "canshot": false,
+      "memeId": "demo_freeze",
+      "behaviors": ["FreezeBehavior"]
+    },
+    {
+      "type": "coin",
+      "class": 5,
+      "x": 120,
+      "y": -80,
+      "canshot": false,
+      "memeId": "demo_flash",
+      "behaviors": ["FlashStepBehavior"]
+    }
+  ]
+}

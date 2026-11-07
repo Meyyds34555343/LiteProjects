@@ -44,7 +44,7 @@ export class LevelsScene extends Component {
 
     start() {
         this.loadLevels();
-        SoundManager.instance.stopBGM();
+        SoundManager.instance?.stopBGM();
     }
 
     /** 刷新所有关卡项的显示状态 */

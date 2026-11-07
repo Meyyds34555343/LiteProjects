@@ -34,6 +34,8 @@ export class UIFail extends Component {
             }, this);
         }
         if (this.btnRetry) {
+            const retryLabel = this.btnRetry.getComponentInChildren(Label);
+            if (retryLabel) retryLabel.string = '重試本關';
             this.btnRetry.on(Button.EventType.CLICK, () => {
                 this.close();
                 if (this.onBtnRetryClick) this.onBtnRetryClick();
@@ -51,6 +53,7 @@ export class UIFail extends Component {
             const pad = (n: number) => n < 10 ? '0' + n : '' + n;
             this.time.string = `${pad(h)}:${pad(m)}:${pad(s)}`;
         }
+        if (this.btnRetry) this.btnRetry.active = true;
         this.node.active = true;
     }
 

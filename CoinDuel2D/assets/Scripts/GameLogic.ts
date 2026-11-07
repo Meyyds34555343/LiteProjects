@@ -1,4 +1,4 @@
-import { _decorator, Component, Node, Vec2, Vec3, Color, Sprite, SpriteFrame, Texture2D, RigidBody2D, ERigidBody2DType, PhysicsSystem2D, Contact2DType, Collider2D, UITransform, CircleCollider2D, AnimationComponent, Camera, EventMouse, EventTouch, Prefab, instantiate } from 'cc';
+import { _decorator, Component, Node, Vec2, Vec3, Color, Sprite, SpriteFrame, Texture2D, RigidBody2D, ERigidBody2DType, PhysicsSystem2D, Contact2DType, Collider2D, UITransform, CircleCollider2D, AnimationComponent, Camera, EventMouse, EventTouch, Prefab, instantiate, Tween, tween, input, Input, AudioClip } from 'cc';
 import { Bomb } from './Effects/Bomb';
 import { BombCoinMarker } from './BombCoinMarker';
 import { MudController } from './Effects/MudController';
@@ -7,12 +7,28 @@ import { HitEffectManager } from './HitEffectManager';
 import { Leaderboard } from './Leaderboard';
 import { SoundManager } from './SoundManager';
 import { TutorialManager } from './TutorialManager';
+import { BehaviorRegistry } from './Behaviors/BehaviorRegistry';
+import { BehaviorResolver } from './Behaviors/BehaviorResolver';
+import { BehaviorBase } from './Behaviors/BehaviorBase';
+import './Behaviors/FreezeBehavior';
+import './Behaviors/FlashStepBehavior';
+import './Behaviors/KnockbackBehavior';
+import { MemeLoader } from './Meme/MemeLoader';
+import { AssetSyncManager } from './Meme/AssetSyncManager';
+import { RunProgressionManager } from './RunProgressionManager';
+import { FailureAnalysisManager } from './FailureAnalysisManager';
+import { WorldStatsDisplay } from './WorldStatsDisplay';
+import { FakeCoinDecoy } from './FakeCoinDecoy';
+import { GameLogicInterpreter, ModRuntimeHost } from './Mod/GameLogicInterpreter';
+import { TableController } from './TableController';
 const { ccclass, property } = _decorator;
 
 enum GamePhase {
     WAITING_PLAYER, // 等待操作
     ANIMATING,      // 硬币飞行/物理运动中
-    SETTLING        // 物理已静止，进行结算
+    SETTLING,       // 物理已静止，进行结算
+    TAP_RESTART,    // 失敗後等待點擊倒流
+    REVERSING,      // 時光倒流 0.3 秒
 }
 
 @ccclass('GameLogic')
@@ -40,6 +56,8 @@ export class GameLogic extends Component {
     @property({ type: HitEffectManager, tooltip: "击中特效管理器（控制拖拽拉近/发射追踪/暂停/震动/粒子/碰撞追踪/恢复）" })
     public hitEffectManager: HitEffectManager | null = null;
 
+    /** 由 GameScene 在初始化时注入。Meme 硬幣也用這顆 prefab。 */
+    public coinPrefab: Prefab | null = null;
     /** 由 GameScene 在初始化时注入 */
     public blockerPrefab: Prefab | null = null;
     /** 由 GameScene 在初始化时注入 */
@@ -57,7 +75,7 @@ export class GameLogic extends Component {
     public bombMudPushFactor: number = 0.333;
 
     @property({ tooltip: "瞄准线长度系数（拖动距离 × 系数 = 瞄准线长度）" })
-    public aimLineFactor: number = 6;
+    public aimLineFactor: number = 2;
 
     @property({ tooltip: "泥潭内硬币滑动阻尼（越大减速越明显）" })
     public mudDamping: number = 8;
@@ -89,7 +107,24 @@ export class GameLogic extends Component {
     private _activeShotCoin: Node | null = null;
     private _lockedCoin: Node | null = null;
     private _lastHitCoin: Node | null = null;
+    /** 這一發打到的第二枚硬幣，失敗回放時閃紅。 */
+    private _foulCoin: Node | null = null;
+    /** 這一發射已經計過分的硬幣。同一枚被碰到兩次只算 1 次。 */
+    private _hitCoinsThisShot: Set<Node> = new Set();
     private _gameStartTime: number = 0;
+    /** 出手前硬幣快照，時光倒流時還原。 */
+    private _shotSnapshot: { node: Node; x: number; y: number; vx: number; vy: number; shooter: boolean }[] = [];
+    private _rewindFrom: { node: Node; x: number; y: number; toX: number; toY: number; shooter: boolean }[] = [];
+    private _rewindElapsed = 0;
+    private readonly _rewindDuration = 0.3;
+    private _fallen = new Set<Node>();
+    private _awaitingTapRestart = false;
+    private _tapArmedAt = 0;
+    private _run: RunProgressionManager | null = null;
+    private _failHints: FailureAnalysisManager | null = null;
+    private _worldStats: WorldStatsDisplay | null = null;
+    /** Geometry Dash 式節奏音高。只有完全沒打中才回到 1。 */
+    private _rhythmPitch = 1;
 
     /** 场上所有道具节点（障碍物 + 陷阱），关卡开始时统一清理 */
     private _props: Node[] = [];
@@ -171,70 +206,98 @@ export class GameLogic extends Component {
     public drawAimLine(fromX: number, fromY: number, dirX: number, dirY: number): void {
         this._aimDotIdx = 0;
 
-        const len = Math.sqrt(dirX * dirX + dirY * dirY);
+        const len = Math.hypot(dirX, dirY);
         if (len < 0.001) { this._hideAimDots(); return; }
         let dx = dirX / len;
         let dy = dirY / len;
 
-        // 瞄准线长度 = 拖动距离 × 系数
-        const aimLength = len * this.aimLineFactor;
+        const aimLength = len * (this._run?.effectiveAim(this.aimLineFactor) ?? this.aimLineFactor);
+        const limitX = this.tableWidth / 2 - this.wallThickness - this.coinRadius;
+        const limitY = this.tableHeight / 2 - this.wallThickness - this.coinRadius;
+        const gapHalf = this.gapWidth / 2;
+        const eps = 0.25;
 
-        const halfW = this.tableWidth / 2 - this.wallThickness;
-        const halfH = this.tableHeight / 2 - this.wallThickness;
-
-        // 1. 收集所有反射线段的端点
-        const pts: { x: number; y: number }[] = [{ x: fromX, y: fromY }];
-        let x = fromX, y = fromY;
+        let x = Math.max(-limitX, Math.min(limitX, fromX));
+        let y = Math.max(-limitY, Math.min(limitY, fromY));
+        const pts: { x: number; y: number }[] = [{ x, y }];
         let remaining = aimLength;
 
-        for (let i = 0; i < 10 && remaining > 0; i++) {
-            let tMin = remaining;
-            let hitWall = -1;
-            if (dx > 0) { const t = (halfW - x) / dx; if (t > 0.01 && t < tMin) { tMin = t; hitWall = 0; } }
-            if (dx < 0) { const t = (-halfW - x) / dx; if (t > 0.01 && t < tMin) { tMin = t; hitWall = 1; } }
-            if (dy > 0) { const t = (halfH - y) / dy; if (t > 0.01 && t < tMin) { tMin = t; hitWall = 2; } }
-            if (dy < 0) { const t = (-halfH - y) / dy; if (t > 0.01 && t < tMin) { tMin = t; hitWall = 3; } }
-            x += dx * tMin;
-            y += dy * tMin;
-            remaining -= tMin;
-            pts.push({ x, y });
-            if (hitWall < 0 || remaining <= 0) break;
-            if (hitWall === 0 || hitWall === 1) dx = -dx; else dy = -dy;
-        }
+        for (let bounce = 0; bounce < 8 && remaining > eps; bounce++) {
+            let tx = Number.POSITIVE_INFINITY;
+            let ty = Number.POSITIVE_INFINITY;
+            if (dx > 1e-6) tx = (limitX - x) / dx;
+            else if (dx < -1e-6) tx = (-limitX - x) / dx;
+            if (dy > 1e-6) ty = (limitY - y) / dy;
+            else if (dy < -1e-6) ty = (-limitY - y) / dy;
 
-        // 2. 沿路径每 12px 放一个圆点
-        const step = 12;
-        let acc = 0;
-        let seg = 0;
-        let sx = pts[0].x, sy = pts[0].y;
-        let segLen = pts.length > 1 ? Math.hypot(pts[1].x - sx, pts[1].y - sy) : 0;
-        let segIdx = 0;
-
-        while (acc < aimLength && segIdx < pts.length - 1) {
-            if (seg + step <= segLen) {
-                seg += step;
-                acc += step;
-            } else {
-                // 进入下一段
-                segIdx++;
-                if (segIdx >= pts.length - 1) break;
-                sx = pts[segIdx].x;
-                sy = pts[segIdx].y;
-                segLen = Math.hypot(pts[segIdx + 1].x - sx, pts[segIdx + 1].y - sy);
-                seg = 0;
-                continue;
+            const hitX = tx > eps && tx <= remaining;
+            const hitY = ty > eps && ty <= remaining;
+            if (!hitX && !hitY) {
+                pts.push({ x: x + dx * remaining, y: y + dy * remaining });
+                break;
             }
-            const t = seg / segLen;
-            const px = sx + (pts[segIdx + 1].x - sx) * t;
-            const py = sy + (pts[segIdx + 1].y - sy) * t;
-            const dot = this._getAimDot();
-            dot.setPosition(px, py, 0);
-            // 距离越远越透明
-            const alpha = Math.round(220 * (1 - acc / aimLength));
-            dot.getComponent(Sprite)!.color = new Color(255, 255, 100, alpha);
+
+            const nearCorner = hitX && hitY && Math.abs(tx - ty) <= 1;
+            const t = nearCorner ? Math.min(tx, ty) : (hitX && (!hitY || tx <= ty) ? tx : ty);
+            const bounceX = nearCorner || (hitX && t === tx);
+            const bounceY = nearCorner || (hitY && t === ty);
+
+            x += dx * t;
+            y += dy * t;
+            remaining -= t;
+            pts.push({ x, y });
+
+            const throughGap = (bounceX && this._aimHitsGap(dx > 0 ? 1 : 3, y, gapHalf))
+                || (bounceY && this._aimHitsGap(dy > 0 ? 0 : 2, x, gapHalf));
+            if (throughGap || remaining <= eps) break;
+
+            if (bounceX) dx = -dx;
+            if (bounceY) dy = -dy;
+            x += dx * eps;
+            y += dy * eps;
+            remaining -= eps;
         }
 
+        this._stampAimDots(pts, aimLength);
         this._hideAimDots();
+    }
+
+    /** 這一點是不是落在牆的缺口上。缺口不反彈，線停在這裡。 */
+    private _aimHitsGap(side: number, along: number, gapHalf: number): boolean {
+        if (gapHalf <= 0 || this.gaps.length === 0) return false;
+        return this.gaps.some((gap) => gap.side === side && Math.abs(along - gap.center) < gapHalf);
+    }
+
+    /** 沿折線每 12px 放一個點，轉角把剩餘間距帶到下一段，避免斷開或重疊。 */
+    private _stampAimDots(pts: { x: number; y: number }[], aimLength: number): void {
+        const step = 12;
+        let untilDot = step;
+        let traveled = 0;
+        for (let i = 0; i < pts.length - 1; i++) {
+            const ax = pts[i].x;
+            const ay = pts[i].y;
+            const bx = pts[i + 1].x;
+            const by = pts[i + 1].y;
+            const segLen = Math.hypot(bx - ax, by - ay);
+            if (segLen < 0.001) continue;
+
+            let walked = 0;
+            while (walked + untilDot <= segLen + 0.001) {
+                walked += untilDot;
+                traveled += untilDot;
+                if (traveled > aimLength) return;
+                const t = walked / segLen;
+                const dot = this._getAimDot();
+                dot.setPosition(ax + (bx - ax) * t, ay + (by - ay) * t, 0);
+                const alpha = Math.round(220 * (1 - traveled / aimLength));
+                dot.getComponent(Sprite)!.color = new Color(255, 255, 100, Math.max(0, alpha));
+                untilDot = step;
+            }
+            const rest = segLen - walked;
+            traveled += rest;
+            untilDot -= rest;
+            if (untilDot < 0.001) untilDot = step;
+        }
     }
 
     /** 隐藏多余的圆点 */
@@ -269,8 +332,13 @@ export class GameLogic extends Component {
     }
 
     public score: number = 0;
+    /** 連續成功次數。失敗或開新關時歸零。 */
+    private _combo = 0;
+    private static readonly _COMBO_MULTIPLIERS = [1, 1.5, 2];
+    public onCoinsLeft: ((count: number) => void) | null = null;
+    private _coinsLeftShown = -1;
     public onGameOver: ((duration: number) => void) | null = null;
-    public onScoreUpdate: ((score: number) => void) | null = null;
+    public onScoreUpdate: ((score: number, multiplier: number) => void) | null = null;
     public onGameWin: ((duration: number) => void) | null = null;
 
     /** 当前活跃的弹射硬币（用于碰撞检测） */
@@ -278,8 +346,120 @@ export class GameLogic extends Component {
         return this._activeShotCoin;
     }
 
+    /** 新的一關開始。分數與過關時間都從這一關起算。 */
+    public beginLevel(): void {
+        this.score = 0;
+        this._combo = 0;
+        this._coinsLeftShown = -1;
+        this._gameStartTime = Date.now();
+        this._fallen.clear();
+        this._awaitingTapRestart = false;
+        this._rhythmPitch = 1;
+        this._disarmTapRestart();
+        this._ensureManagers();
+        this._run?.beginRun(this.aimLineFactor);
+        this._worldStats?.resetBest();
+        this._worldStats?.ensure(this.coinGroup, this.tableHeight);
+        this._worldStats?.sync(0, this.countCoins());
+        this.onScoreUpdate?.(this.score, 1);
+    }
+
+    public countCoins(): number {
+        if (!this.coinGroup) return 0;
+        let count = 0;
+        for (const child of this.coinGroup.children) {
+            if (child.getComponent(CoinController)) count++;
+        }
+        return count;
+    }
+
+    /** 這一發成功。第 1 發 x1，第 2 發 x1.5，之後 x2；局內 buff 可再加一檔。 */
+    private _awardSuccess(): void {
+        const caps = GameLogic._COMBO_MULTIPLIERS.slice();
+        const extra = this._run?.comboCapExtra ?? 0;
+        for (let i = 0; i < extra; i++) caps.push(caps[caps.length - 1] + 1);
+        const index = Math.min(this._combo, caps.length - 1);
+        const multiplier = caps[index];
+        this._combo++;
+        this.score += multiplier;
+        this.onScoreUpdate?.(this.score, multiplier);
+        this._worldStats?.sync(this._combo, this.countCoins());
+    }
+
+    private _mod: GameLogicInterpreter | null = null;
+    private _modShotCount = 0;
+
+    private _ensureManagers(): void {
+        this._run = this.getComponent(RunProgressionManager) ?? this.addComponent(RunProgressionManager);
+        this._failHints = this.getComponent(FailureAnalysisManager) ?? this.addComponent(FailureAnalysisManager);
+        this._worldStats = this.getComponent(WorldStatsDisplay) ?? this.addComponent(WorldStatsDisplay);
+        this._bindModInterpreter();
+    }
+
+    private _bindModInterpreter(): void {
+        this._mod = GameLogicInterpreter.getOrCreate();
+        const host: ModRuntimeHost = {
+            coinGroup: this.coinGroup,
+            countCoins: () => this.countCoins(),
+            getShotCount: () => this._modShotCount,
+            getCombo: () => this._combo,
+            getActiveShotCoin: () => this._activeShotCoin,
+            getLastHitCoin: () => this._lastHitCoin,
+            getCoinDamping: () => this.coinDamping,
+            setCoinDamping: (v) => { this.coinDamping = v; },
+            triggerTimeReverse: () => this.startTimeReverse(),
+            declareWin: () => this._handleGameWin(),
+            declareLose: () => this._handleGameOver(),
+            shakeCamera: (intensity, dir) => {
+                this.hitEffectManager?.shakeCamera(intensity, dir ?? new Vec2(1, 0));
+            },
+            playClipById: (_sfxId, pitch) => {
+                SoundManager.instance?.playShot(typeof pitch === 'number' ? pitch : 1);
+            },
+            getElapsedSeconds: () => Math.floor((Date.now() - this._gameStartTime) / 1000),
+            getScore: () => this.score,
+            hasBossTagged: () => false,
+            applyCoinSkin: (coin, preset, url) => {
+                const sync = this.getComponent(AssetSyncManager) ?? AssetSyncManager.instance;
+                if (!sync) return;
+                sync.applyCoinSkin(coin, {
+                    preset: preset || undefined,
+                    default: url || undefined,
+                    idle: url || undefined,
+                });
+            },
+            applyTableSkin: (felt, wall) => {
+                const sync = this.getComponent(AssetSyncManager) ?? AssetSyncManager.instance;
+                const table = this.node.scene?.getComponentInChildren(TableController) ?? null;
+                sync?.applyTableConfig(table, {
+                    felt: felt || undefined,
+                    wall: wall || undefined,
+                });
+            },
+        };
+        this._mod.bindHost(host);
+        if (!this._mod.mod) this._mod.loadCached();
+    }
+
+    /** Load a community sandbox share code at runtime (no Canvas HUD change). */
+    public loadModShareCode(code: string): boolean {
+        this._bindModInterpreter();
+        return this._mod?.loadFromShareCode(code) ?? false;
+    }
+
     protected start(): void {
         this._gameStartTime = Date.now();
+        this._ensureManagers();
+        this._run?.beginRun(this.aimLineFactor);
+        this._worldStats?.ensure(this.coinGroup, this.tableHeight);
+        MemeLoader.checkAndDownload();
+        const sync = this.getComponent(AssetSyncManager) ?? this.addComponent(AssetSyncManager);
+        sync.sync(() => {
+            const remoteMod = sync.getMod();
+            if (remoteMod) this._mod?.load(remoteMod);
+            this._mod?.onGameStart();
+        });
+        this._mod?.onGameStart();
 
         // 自动创建拖拽引导线 Graphics 节点（挂在 coinGroup 下，与硬币同坐标系）
         // if (!this.dragGraphics) {
@@ -323,6 +503,7 @@ export class GameLogic extends Component {
     }
 
     protected onDestroy(): void {
+        this._disarmTapRestart();
         if (PhysicsSystem2D.instance) {
             PhysicsSystem2D.instance.off(Contact2DType.BEGIN_CONTACT, this._onBeginContact, this);
         }
@@ -340,16 +521,40 @@ export class GameLogic extends Component {
         if (markerA && !markerA.activated) markerA.activated = true;
         if (markerB && !markerB.activated) markerB.activated = true;
 
+        const behaviorConsumed = BehaviorResolver.resolveContact(nodeA, nodeB, this);
+
         if (!this._activeShotCoin) return;
 
         // 只处理硬币-硬币碰撞，跳过围墙碰撞
         const otherNode = nodeA === this._activeShotCoin ? nodeB : nodeA;
         if (nodeA !== this._activeShotCoin && nodeB !== this._activeShotCoin) return;
+        if (this._hitCoinsThisShot.has(otherNode)) return;
+
+        // 假幣誘餌：高速穿過 + 紙屑，不算命中
+        const decoy = otherNode.getComponent(FakeCoinDecoy);
+        if (decoy?.tryGhost(this._activeShotCoin, this.coinGroup)) return;
+
+        // 主動行為已消費碰撞：仍算一次命中，避免被判定成 miss，但不再播一般打擊特效。
+        if (behaviorConsumed) {
+            const hitCtrl = otherNode.getComponent(CoinController);
+            const hitBomb = otherNode.getComponent(BombCoinMarker);
+            if (hitCtrl || hitBomb) {
+                this._hitCoinsThisShot.add(otherNode);
+                this.coinHitCount++;
+                if (this.coinHitCount === 2) this._foulCoin = otherNode;
+                this.resetIdleTimer();
+                this.onCoinHitByActiveShot(otherNode);
+                this.tutorialManager?.onCoinHit(otherNode);
+            }
+            return;
+        }
 
         // 撞到炸弹硬币：仅计数，不触发打击特效
         const hitBomb = otherNode.getComponent(BombCoinMarker);
         if (hitBomb) {
+            this._hitCoinsThisShot.add(otherNode);
             this.coinHitCount++;
+            if (this.coinHitCount === 2) this._foulCoin = otherNode;
             this.resetIdleTimer();
             this.tutorialManager?.onCoinHit(otherNode);
             return;
@@ -359,34 +564,38 @@ export class GameLogic extends Component {
         if (!hitCtrl) return;
 
         // 首次碰撞：委托给 HitEffectManager 处理特效
+        const hitPos = new Vec3(
+            (nodeA.position.x + nodeB.position.x) / 2,
+            (nodeA.position.y + nodeB.position.y) / 2,
+            0,
+        );
         if (this.coinHitCount === 0) {
-            const hitPos = new Vec3(
-                (nodeA.position.x + nodeB.position.x) / 2,
-                (nodeA.position.y + nodeB.position.y) / 2,
-                0,
-            );
             this.hitEffectManager?.onHit(hitPos, otherNode, this._activeShotCoin, this);
         } else {
-            // 后续碰撞直接恢复速度
             this._restoreSpeed();
         }
+        this._impactJuice(otherNode, this._activeShotCoin);
 
-        // 被打击硬币切换被打击贴图 + 播放被打击音效（优先使用 config.json 配置的 hitted_sfx）
+        // 被打击硬币切换被打击贴图 + 連鎖節奏音（每下 +0.08）
         hitCtrl.showHit();
-        if (hitCtrl.hittedSfxClip) {
-            SoundManager.instance.playClip(hitCtrl.hittedSfxClip);
-        } else {
-            SoundManager.instance.playCollisionCoin();
-        }
+        this._playChainHitSfx(hitCtrl.hittedSfxClip);
 
-        // 当发射硬币发生二次碰撞时，播放音效
+        this._hitCoinsThisShot.add(otherNode);
         this.coinHitCount++;
-        if (this.coinHitCount == 2){
-            SoundManager.instance.playSecondaryCollision();
+        if (this.coinHitCount === 2) {
+            this._foulCoin = otherNode;
+            SoundManager.instance?.playSecondaryCollision(this._rhythmPitch);
         }
 
         this.onCoinHitByActiveShot(otherNode);
         this.tutorialManager?.onCoinHit(otherNode);
+        this._mod?.onCoinHit({
+            coin: otherNode,
+            other: this._activeShotCoin,
+            velocity: this._activeShotCoin?.getComponent(RigidBody2D)?.linearVelocity.length() ?? 0,
+            x: hitPos.x,
+            y: hitPos.y,
+        });
     }
 
     // ── 供 HitEffectManager 调用的公开桥接方法 ──
@@ -452,7 +661,7 @@ export class GameLogic extends Component {
     }
 
     /** 在指定位置生成普通硬币（关卡配置用），radius 缺省时使用 coinRadius */
-    public spawnCoinAt(prefab: Prefab, x: number, y: number, radius?: number): void {
+    public spawnCoinAt(prefab: Prefab, x: number, y: number, radius?: number, behaviorId?: string): Node {
         const node = instantiate(prefab);
         this.coinGroup.addChild(node);
         node.setPosition(x, y, 0);
@@ -464,6 +673,45 @@ export class GameLogic extends Component {
         if (cc) cc.radius = r;
         const ctrl = node.addComponent(CoinController);
         ctrl.setGameLogic(this);
+        if (behaviorId) this.attachCoinBehavior(node, behaviorId);
+        return node;
+    }
+
+    /**
+     * 依註冊 id 把行為掛到硬幣上。
+     * 例：this.attachCoinBehavior(coin, 'FreezeBehavior')
+     */
+    public attachCoinBehavior(coin: Node, behaviorId: string): void {
+        BehaviorRegistry.attach(coin, behaviorId);
+    }
+
+    /**
+     * 用已下載的 Meme 生成硬幣。
+     * 找不到資料或圖片解不開時，仍生成一枚預設外觀的硬幣。
+     */
+    public spawnMemeCoinAt(memeId: string, x: number, y: number): Node | null {
+        if (!this.coinPrefab) {
+            console.warn('[Meme] 尚未設定 coinPrefab');
+            return null;
+        }
+        const meme = MemeLoader.getLoadedMemes().find((item) => item.id === memeId);
+        if (!meme) {
+            console.warn('[Meme] 找不到，改用預設硬幣:', memeId);
+            return this.spawnCoinAt(this.coinPrefab, x, y);
+        }
+        const node = this.spawnCoinAt(
+            this.coinPrefab,
+            x,
+            y,
+            meme.radius > 0 ? meme.radius : undefined,
+            meme.behavior || undefined,
+        );
+        MemeLoader.applySprite(memeId, (frame) => {
+            if (!frame || !node.isValid) return;
+            const sprite = CoinController.getCoinSprite(node);
+            if (sprite) sprite.spriteFrame = frame;
+        });
+        return node;
     }
 
     /** 在指定位置生成炸弹硬币（关卡配置用），被撞击静止后触发爆炸 */
@@ -600,6 +848,13 @@ export class GameLogic extends Component {
     }
 
     update(deltaTime: number) {
+        if (this.currentPhase === GamePhase.REVERSING) {
+            this._tickTimeReverse(deltaTime);
+            return;
+        }
+
+        this._mod?.tick(deltaTime);
+
         // 1. 持续监测坠落（在任意状态下均可坠落）
         this.checkCoinFalls();
 
@@ -608,6 +863,9 @@ export class GameLogic extends Component {
 
         // 2.5 泥潭摩擦：硬币中心在泥潭区域内时提高阻尼
         this._applyMudFriction();
+
+        // 2.6 被動行為（磁鐵、持續減速等）
+        BehaviorResolver.tick(deltaTime, this);
 
         // 3. 慢动作超时保护：3秒后自动恢复
         if (this._isSlowMotion && Date.now() - this._slowMotionStartTime >= this._slowMotionMaxDuration) {
@@ -627,7 +885,19 @@ export class GameLogic extends Component {
                 ctrl.allowedOperation = true;
                 ctrl.showIndicator(true);
             }
+            this._run?.attachAura(this.coinGroup, this._pendingLockedCoin);
+            this._captureShot();
             this._pendingLockedCoin = null;
+        }
+
+        const shooter = this._run?.findShooter(this.coinGroup) ?? null;
+        this._run?.followShooter(shooter);
+
+        const coinsLeft = this.countCoins();
+        if (coinsLeft !== this._coinsLeftShown) {
+            this._coinsLeftShown = coinsLeft;
+            this.onCoinsLeft?.(coinsLeft);
+            this._worldStats?.sync(this._combo, coinsLeft);
         }
 
         // 6. 物理模拟中：检查是否静止
@@ -740,7 +1010,13 @@ export class GameLogic extends Component {
                 coin.setPosition(newX, newY, 0);
                 rb.linearVelocity = new Vec2(newVx, newVy);
                 // 硬币与墙碰撞音效
-                SoundManager.instance.playCollisionWall();
+                SoundManager.instance?.playCollisionWall();
+                this._mod?.onCushionBounce({
+                    coin,
+                    velocity: Math.hypot(newVx, newVy),
+                    x: newX,
+                    y: newY,
+                });
             }
         }
     }
@@ -808,12 +1084,17 @@ export class GameLogic extends Component {
     }
 
     private onCoinFall(coin: Node) {
-        console.log("检测到硬币坠落，执行销毁...");
-        // 硬币掉落 → 恢复速度
+        if (this._fallen.has(coin)) return;
+        this._fallen.add(coin);
         this._restoreSpeed();
-        SoundManager.instance.playCoinFall();
+        SoundManager.instance?.playCoinFall();
         this.coinFallCount++;
-        coin.destroy();
+        const body = coin.getComponent(RigidBody2D);
+        if (body) {
+            body.linearVelocity = new Vec2(0, 0);
+            body.angularVelocity = 0;
+        }
+        this._mod?.onCoinFall({ coin, x: coin.position.x, y: coin.position.y });
     }
 
     /** 被 CoinController 调用：记录当前弹射的硬币 */
@@ -875,7 +1156,7 @@ export class GameLogic extends Component {
         }
 
         // 执行爆炸物理效果
-        SoundManager.instance.playExplosion();
+        SoundManager.instance?.playExplosion();
         Bomb.applyExplosionAt(pos, {
             pushRadius: this.bombPushRadius,
             pushForce: this.bombPushForce,
@@ -888,17 +1169,17 @@ export class GameLogic extends Component {
             wallThickness: this.wallThickness,
         });
 
-        // 移除炸弹硬币
+        // 移除炸弹硬币。若下一發鎖的就是這顆炸彈，先解開，避免鎖到已銷毀的節點。
         const idx = this._bombCoins.indexOf(bombCoin);
         if (idx >= 0) this._bombCoins.splice(idx, 1);
+        const lastHitWasBomb = this._lastHitCoin === bombCoin;
         bombCoin.removeFromParent();
         bombCoin.destroy();
 
-        // 重置碰撞计数，回到 ANIMATING 等待被推开的硬币再次静止
-        this.coinHitCount = 0;
+        // 保留這次合法命中，回到 ANIMATING 等被推開的硬幣再次靜止。
         this.coinFallCount = 0;
         this._activeShotCoin = null;
-        this._lastHitCoin = null;
+        if (lastHitWasBomb) this._lastHitCoin = null;
         this.currentPhase = GamePhase.ANIMATING;
 
         this.resetIdleTimer();
@@ -913,8 +1194,7 @@ export class GameLogic extends Component {
                 return; // 教程已处理失败（重置位置）
             }
             // 教程成功 → 播放打飞特效，跳过游戏结束/胜利判定
-            this.score++;
-            this.onScoreUpdate?.(this.score);
+            this._awardSuccess();
 
             const afterKnockOut = () => {
                 this._activeShotCoin = null;
@@ -946,28 +1226,40 @@ export class GameLogic extends Component {
         }
 
         // ── 正常模式 ──
-        // 1. 有任意硬币掉落 → 游戏结束
+        const modResult = this._mod?.evaluateAfterSettle({
+            fallenStriker: this.coinFallCount > 0 && !!this._activeShotCoin && this._fallen.has(this._activeShotCoin),
+            coinsLeft: this.countCoins(),
+        });
+        if (modResult === 'win' || modResult === 'lose') return;
+
+        // 失敗不開結算面板：點一下就把這一拍還原。
         if (this.coinFallCount > 0) {
-            this._handleGameOver();
+            const fallen = this._foulCoin ?? this._activeShotCoin;
+            this._failHints?.explainFall(
+                this.coinGroup,
+                fallen?.position.x ?? 0,
+                fallen?.position.y ?? 0,
+            );
+            if (this.coinHitCount >= 2) this._mod?.onFoul({ coin: fallen });
+            this._armTapRestart();
             return;
         }
 
-        // 2. 根据主动撞击数量判定
         switch (this.coinHitCount) {
-            case 0:
-                this._handleGameOver();
+            case 0: {
+                const shot = this._activeShotCoin;
+                this._failHints?.explain(this.coinGroup, shot?.position.x ?? 0, shot?.position.y ?? 0, 0, null, shot);
+                this._armTapRestart();
                 return;
+            }
 
             case 1: {
-                // 得分 +1
-                this.score++;
-                this.onScoreUpdate?.(this.score);
+                this._awardSuccess();
 
-                // 打飞特效（B 硬币旋转手臂将 A 打飞出界）结束后再结算
                 const afterKnockOut = () => {
                     this._activeShotCoin = null;
+                    this._run?.onCoinCleared();
 
-                    // 胜利条件：桌面只剩最后一枚硬币（排除 DragLine 等非硬币节点）
                     let coinCount = 0;
                     for (const child of this.coinGroup.children) {
                         if (child.getComponent(CoinController)) coinCount++;
@@ -977,7 +1269,6 @@ export class GameLogic extends Component {
                         return;
                     }
 
-                    // 锁定被撞硬币为下一发起手子弹
                     this._lockedCoin = this._lastHitCoin;
                     this._continueWithLockedCoin();
                 };
@@ -987,7 +1278,6 @@ export class GameLogic extends Component {
                 if (shotCoin && hitCoin && this.hitEffectManager) {
                     this.hitEffectManager.playKnockOut(shotCoin, hitCoin, afterKnockOut);
                 } else {
-                    // 无打飞特效时：立即移除发射硬币再结算
                     if (shotCoin) {
                         shotCoin.removeFromParent();
                         shotCoin.destroy();
@@ -997,21 +1287,211 @@ export class GameLogic extends Component {
                 return;
             }
 
-            default: // 2 个或更多
-                this._handleGameOver();
+            default: {
+                const hem = this.hitEffectManager;
+                const coin = this._foulCoin;
+                const shot = this._activeShotCoin;
+                this._failHints?.explain(
+                    this.coinGroup,
+                    coin?.position.x ?? shot?.position.x ?? 0,
+                    coin?.position.y ?? shot?.position.y ?? 0,
+                    this.coinHitCount,
+                    coin,
+                    shot,
+                );
+                if (hem) hem.playFoulReplay(coin, () => {});
+                this._armTapRestart();
                 return;
+            }
         }
     }
 
-    /** 游戏结束处理 */
+    /** 連鎖撞擊：當下音高播放，然後再升 0.08。 */
+    private _playChainHitSfx(clip: AudioClip | null): void {
+        const pitch = this._rhythmPitch;
+        if (clip) SoundManager.instance?.playClip(clip, pitch);
+        else SoundManager.instance?.playCollisionCoin(pitch);
+        this._rhythmPitch = Math.min(2.4, this._rhythmPitch + 0.08);
+    }
+
+    /** 微震 + 被撞硬幣 squash / stretch。 */
+    private _impactJuice(hit: Node, shot: Node | null): void {
+        const dx = hit.position.x - (shot?.position.x ?? hit.position.x);
+        const dy = hit.position.y - (shot?.position.y ?? hit.position.y);
+        const dir = new Vec2(dx, dy);
+        if (dir.length() > 0.001) dir.normalize();
+        else dir.set(1, 0);
+        this.hitEffectManager?.shakeCamera(0.09, dir);
+
+        const visual = hit.getChildByName('Sprite') ?? hit;
+        Tween.stopAllByTarget(visual);
+        visual.setScale(1, 1, 1);
+        tween(visual)
+            .to(0.05, { scale: new Vec3(1.35, 0.62, 1) })
+            .to(0.07, { scale: new Vec3(0.82, 1.22, 1) })
+            .to(0.1, { scale: new Vec3(1, 1, 1) })
+            .start();
+    }
+
+    /** 失敗後等玩家點一下倒流。有 mulligan 時自動倒流。 */
+    private _armTapRestart(): void {
+        this._combo = 0;
+        if (this.coinHitCount === 0) this._rhythmPitch = 1;
+        this._freezeAllCoins();
+        this._restoreSpeed();
+        this.hitEffectManager?.stopTracking();
+        this._pendingLockedCoin = null;
+        this._setCoinsInteraction(false);
+        this.currentPhase = GamePhase.TAP_RESTART;
+        this._worldStats?.sync(0, this.countCoins());
+        if (this._run?.trySpendMulligan()) {
+            this.scheduleOnce(() => this.startTimeReverse(), 0.08);
+            return;
+        }
+        this._awaitingTapRestart = true;
+        this._tapArmedAt = Date.now();
+        input.on(Input.EventType.TOUCH_END, this._onTapRestart, this);
+        input.on(Input.EventType.MOUSE_UP, this._onTapRestart, this);
+    }
+
+    private _disarmTapRestart(): void {
+        input.off(Input.EventType.TOUCH_END, this._onTapRestart, this);
+        input.off(Input.EventType.MOUSE_UP, this._onTapRestart, this);
+        this._awaitingTapRestart = false;
+    }
+
+    private _onTapRestart = (_e?: EventTouch | EventMouse): void => {
+        if (!this._awaitingTapRestart) return;
+        if (Date.now() - this._tapArmedAt < 80) return;
+        this.startTimeReverse();
+    };
+
+    private _freezeAllCoins(): void {
+        if (!this.coinGroup) return;
+        for (const coin of this.coinGroup.children) {
+            const body = coin.getComponent(RigidBody2D);
+            if (!body) continue;
+            body.linearVelocity = new Vec2(0, 0);
+            body.angularVelocity = 0;
+        }
+    }
+
+    /** 相容舊呼叫：改走時光倒流。 */
+    public instantRestart(): void {
+        this.startTimeReverse();
+    }
+
+    /**
+     * 時光倒流：停 tween、凍結物理，0.3 秒 lerp 回出手前位置，然後可射。
+     */
+    public startTimeReverse(): void {
+        if (this.currentPhase === GamePhase.REVERSING) return;
+        Tween.stopAll();
+        this.hitEffectManager?.cancelFoulReplay();
+        this._disarmTapRestart();
+        this._restoreSpeed();
+        this._freezeAllCoins();
+        if (PhysicsSystem2D.instance) PhysicsSystem2D.instance.enable = false;
+
+        this._rewindFrom = [];
+        for (const snap of this._shotSnapshot) {
+            if (!snap.node.isValid) continue;
+            this._rewindFrom.push({
+                node: snap.node,
+                x: snap.node.position.x,
+                y: snap.node.position.y,
+                toX: snap.x,
+                toY: snap.y,
+                shooter: snap.shooter,
+            });
+        }
+        this._rewindElapsed = 0;
+        this.currentPhase = GamePhase.REVERSING;
+        this.hitEffectManager?.stopTracking();
+    }
+
+    private _tickTimeReverse(dt: number): void {
+        this._rewindElapsed += dt;
+        const t = Math.min(1, this._rewindElapsed / this._rewindDuration);
+        const e = t * t * (3 - 2 * t);
+        for (const item of this._rewindFrom) {
+            if (!item.node.isValid) continue;
+            item.node.setPosition(
+                item.x + (item.toX - item.x) * e,
+                item.y + (item.toY - item.y) * e,
+                0,
+            );
+        }
+        if (t < 1) return;
+        this._finishTimeReverse();
+    }
+
+    private _finishTimeReverse(): void {
+        if (PhysicsSystem2D.instance) PhysicsSystem2D.instance.enable = true;
+        for (const item of this._rewindFrom) {
+            if (!item.node.isValid) continue;
+            item.node.setPosition(item.toX, item.toY, 0);
+            const body = item.node.getComponent(RigidBody2D);
+            if (body) {
+                if (body.type !== ERigidBody2DType.Dynamic) body.type = ERigidBody2DType.Dynamic;
+                body.linearVelocity = new Vec2(0, 0);
+                body.angularVelocity = 0;
+                body.linearDamping = this.coinDamping;
+            }
+            const ctrl = item.node.getComponent(CoinController);
+            if (!ctrl) continue;
+            ctrl.isKnockingOut = false;
+            ctrl.allowedOperation = item.shooter;
+            ctrl.showIndicator(item.shooter);
+            ctrl.showIdle();
+            const visual = item.node.getChildByName('Sprite') ?? item.node;
+            visual.setScale(1, 1, 1);
+        }
+        this._rewindFrom = [];
+        this._fallen.clear();
+        this._activeShotCoin = null;
+        this._pendingLockedCoin = null;
+        this._lastHitCoin = null;
+        this._foulCoin = null;
+        this.coinHitCount = 0;
+        this.coinFallCount = 0;
+        this._hitCoinsThisShot.clear();
+        this.currentPhase = GamePhase.WAITING_PLAYER;
+        this.tutorialManager?.resetIdleTimer();
+        const shooter = this._run?.findShooter(this.coinGroup) ?? null;
+        this._run?.attachAura(this.coinGroup, shooter);
+        this._worldStats?.sync(this._combo, this.countCoins());
+    }
+
+    private _captureShot(): void {
+        this._shotSnapshot = [];
+        if (!this.coinGroup) return;
+        for (const coin of this.coinGroup.children) {
+            const ctrl = coin.getComponent(CoinController);
+            if (!ctrl) continue;
+            const body = coin.getComponent(RigidBody2D);
+            this._shotSnapshot.push({
+                node: coin,
+                x: coin.position.x,
+                y: coin.position.y,
+                vx: body?.linearVelocity.x ?? 0,
+                vy: body?.linearVelocity.y ?? 0,
+                shooter: ctrl.allowedOperation,
+            });
+        }
+    }
+
+    /** 游戏结束处理（整關放棄才走這裡；一般失誤改走 instantRestart） */
     private _handleGameOver(): void {
         console.log(">>> 游戏结束 <<<");
+        this._disarmTapRestart();
+        this._combo = 0;
         this._restoreSpeed();
         this.hitEffectManager?.stopTracking();
         this._pendingLockedCoin = null;
         this.tutorialManager && (this.tutorialManager.gameOver = true);
-        SoundManager.instance.stopDragDirectionLoop();
-        SoundManager.instance.playGameOver();
+        SoundManager.instance?.stopDragDirectionLoop();
+        SoundManager.instance?.playGameOver();
         const duration = Math.floor((Date.now() - this._gameStartTime) / 1000);
         if (this.score > 0) {
             Leaderboard.addEntry(this.score, duration);
@@ -1027,9 +1507,12 @@ export class GameLogic extends Component {
         this.hitEffectManager?.stopTracking();
         this._pendingLockedCoin = null;
         this.tutorialManager && (this.tutorialManager.gameOver = true);
-        SoundManager.instance.stopDragDirectionLoop();
+        SoundManager.instance?.stopDragDirectionLoop();
         this._setCoinsInteraction(false);
         const duration = Math.floor((Date.now() - this._gameStartTime) / 1000);
+        if (this.score > 0) {
+            Leaderboard.addEntry(this.score, duration);
+        }
         this.onGameWin?.(duration);
     }
 
@@ -1061,27 +1544,57 @@ export class GameLogic extends Component {
         this._doLaunch(coin, velocity);
     }
 
-    /** 实际执行发射：设置速度、切换发射贴图、播放音效、触发管理器特效、进入物理模拟 */
+    /** 實際發射：出手前再快取一次，用衝量推出，再進物理模擬。 */
     private _doLaunch(coin: Node, velocity: Vec2): void {
         const rb = coin.getComponent(RigidBody2D);
         if (!rb) return;
-        rb.linearVelocity = velocity;
 
-        // 切换发射贴图 + 播放发射音效（优先使用 config.json 配置的 shot_sfx）
+        this._captureShot();
+        rb.linearVelocity = new Vec2(0, 0);
+        rb.angularVelocity = 0;
+        // impulse = mass × Δv，出手前速度為 0，等價於設成目標初速
+        const mass = Math.max(0.01, rb.getMass());
+        rb.applyLinearImpulseToCenter(new Vec2(velocity.x * mass, velocity.y * mass), true);
+
+        // 連擊 0 = 原調，每多一次連擊高 0.1，最高 1.5。
+        const pitch = Math.min(1.5, 1 + this._combo * 0.1);
         const ctrl = coin.getComponent(CoinController);
         if (ctrl) {
             ctrl.showShot();
             if (ctrl.shotSfxClip) {
-                SoundManager.instance.playClip(ctrl.shotSfxClip);
+                SoundManager.instance?.playClip(ctrl.shotSfxClip, pitch);
             } else {
-                SoundManager.instance.playShot();
+                SoundManager.instance?.playShot(pitch);
             }
         } else {
-            SoundManager.instance.playShot();
+            SoundManager.instance?.playShot(pitch);
         }
 
         this.hitEffectManager?.onLaunch(coin, this);
+        this._modShotCount++;
+        this._mod?.onShotFired({
+            coin,
+            velocity: velocity.length(),
+            powerPercent: Math.min(100, (velocity.length() / Math.max(1, this.velocityFactor * 400)) * 100),
+            x: coin.position.x,
+            y: coin.position.y,
+        });
+        if (velocity.length() > 0) {
+            const pct = Math.min(100, (velocity.length() / Math.max(1, this.velocityFactor * 400)) * 100);
+            this._mod?.onPowerCharged(pct, { coin });
+        }
         this.startSimulation();
+    }
+
+    /**
+     * 關卡用：生成假幣誘餌。高速會穿過並噴紙屑。
+     */
+    public spawnDecoyCoinAt(prefab: Prefab, x: number, y: number, radius?: number): Node {
+        const node = this.spawnCoinAt(prefab, x, y, radius);
+        if (!node.getComponent(FakeCoinDecoy)) node.addComponent(FakeCoinDecoy);
+        const sprite = CoinController.getCoinSprite(node);
+        if (sprite) sprite.color = new Color(200, 200, 220, 200);
+        return node;
     }
 
     /** 进入物理模拟阶段 */
@@ -1090,12 +1603,17 @@ export class GameLogic extends Component {
         this.coinHitCount = 0;
         this.coinFallCount = 0;
         this._lastHitCoin = null;
+        this._foulCoin = null;
+        this._fallen.clear();
+        this._hitCoinsThisShot.clear();
+        this._run?.hideAura();
         this._setCoinsInteraction(false);
         // 游戏速度由 HitEffectManager.onLaunch 控制
     }
 
     // 允许用户操作状态
     public waitingPlayerOperation(){
+        this._disarmTapRestart();
         this._restoreSpeed();
         this.hitEffectManager?.stopTracking();
         this._pendingLockedCoin = null;
@@ -1106,8 +1624,14 @@ export class GameLogic extends Component {
         this._lastHitCoin = null;
         this.coinHitCount = 0;
         this.coinFallCount = 0;
+        this._fallen.clear();
+        this._hitCoinsThisShot.clear();
         this._setCoinsInteraction(true);
-        // 重置空闲计时器
+        this._captureShot();
+        const shooter = this._run?.findShooter(this.coinGroup) ?? null;
+        this._run?.attachAura(this.coinGroup, shooter);
+        this._worldStats?.ensure(this.coinGroup, this.tableHeight);
+        this._worldStats?.sync(this._combo, this.countCoins());
         this.tutorialManager?.resetIdleTimer();
     }
 
@@ -1123,6 +1647,9 @@ export class GameLogic extends Component {
             if (ctrl) {
                 ctrl.allowedOperation = allowed;
                 ctrl.showIndicator(allowed);
+            }
+            for (const behavior of coin.getComponents(BehaviorBase)) {
+                behavior.showIdleVisual();
             }
 
             // 每次启用时同步滑动阻力（持久设置，设一次即可）

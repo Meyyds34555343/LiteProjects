@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CoinDuel2D — Blockly Mod Editor</title>
+  <script src="https://unpkg.com/blockly@10.4.3/blockly.min.js"></script>
+  <script src="https://unpkg.com/blockly@10.4.3/msg/en.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+  <style>
+    :root {
+      --bg: #14181f;
+      --panel: #1c2330;
+      --line: #2c3648;
+      --text: #e8eef8;
+      --muted: #9aa8bd;
+      --accent: #5ec8ff;
+      --ok: #6bcf7f;
+      --warn: #f0c14a;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", "Trebuchet MS", sans-serif; }
+    body { display: grid; grid-template-rows: auto 1fr auto; }
+    header {
+      display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+      padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel);
+    }
+    header h1 { margin: 0; font-size: 1.05rem; font-weight: 700; letter-spacing: 0.02em; }
+    header .hint { color: var(--muted); font-size: 0.82rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+    button, .file-btn {
+      appearance: none; border: 1px solid var(--line); background: #243044; color: var(--text);
+      border-radius: 8px; padding: 7px 12px; font: inherit; cursor: pointer;
+    }
+    button:hover, .file-btn:hover { border-color: var(--accent); }
+    button.primary { background: #1f4d6b; border-color: #3a7ea8; }
+    button.ok { background: #1f4a32; border-color: #3d8a55; }
+    #main {
+      display: grid; grid-template-columns: 1fr minmax(260px, 320px);
+      min-height: 0; height: 100%;
+    }
+    @media (max-width: 900px) {
+      #main { grid-template-columns: 1fr; grid-template-rows: 1fr 280px; }
+    }
+    #workspace { width: 100%; height: 100%; min-height: 320px; }
+    #previewPane {
+      border-left: 1px solid var(--line); background: #121820;
+      display: grid; grid-template-rows: auto 1fr auto; min-height: 0;
+    }
+    #previewPane .title {
+      padding: 10px 12px 6px; font-size: 0.78rem; color: var(--accent);
+      letter-spacing: 0.06em; font-weight: 700;
+    }
+    #previewWrap { position: relative; min-height: 0; }
+    #previewCanvas { width: 100%; height: 100%; display: block; }
+    #previewStats {
+      padding: 8px 12px 12px; font-size: 0.72rem; color: var(--muted);
+      border-top: 1px solid var(--line); line-height: 1.45;
+    }
+    #previewStats strong { color: var(--text); font-weight: 600; }
+    footer {
+      border-top: 1px solid var(--line); background: var(--panel); padding: 10px 14px;
+      display: grid; gap: 8px;
+    }
+    footer label { font-size: 0.78rem; color: var(--muted); }
+    textarea {
+      width: 100%; min-height: 72px; resize: vertical; border-radius: 8px;
+      border: 1px solid var(--line); background: #0f131a; color: var(--text);
+      font-family: Consolas, "Courier New", monospace; font-size: 0.78rem; padding: 8px;
+    }
+    #status { font-size: 0.8rem; color: var(--muted); }
+    #status.ok { color: var(--ok); }
+    #status.err { color: #ff8a8a; }
+    .meta { display: flex; gap: 8px; flex-wrap: wrap; }
+    .meta input {
+      background: #0f131a; border: 1px solid var(--line); color: var(--text);
+      border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 140px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CoinDuel2D Blockly Mod Editor</h1>
+    <span class="hint">Level + Rules in Scratch → Export Share → paste in Cocos（导入 V）</span>
+    <div class="meta">
+      <input id="modName" placeholder="Mod name" value="Blockly Mode" />
+      <input id="modAuthor" placeholder="Author" value="" />
+    </div>
+    <div class="actions">
+      <button class="primary" id="btnExportShare">Export Share Code</button>
+      <button id="btnExportJson">Export Mod JSON</button>
+      <button id="btnExportLevel">Export Level JSON</button>
+      <button id="btnExportWs">Export Workspace</button>
+      <button class="ok" id="btnImportShare">Import Share / WS</button>
+      <button id="btnCopyJson">Copy JSON</button>
+      <button id="btnClear">Clear</button>
+    </div>
+  </header>
+  <div id="main">
+    <div id="workspace"></div>
+    <aside id="previewPane">
+      <div class="title">LIVE PREVIEW</div>
+      <div id="previewWrap"><canvas id="previewCanvas"></canvas></div>
+      <div id="previewStats">Edit blocks → table / physics update instantly</div>
+    </aside>
+  </div>
+  <footer>
+    <label for="io">Share code / JSON / workspace string</label>
+    <textarea id="io" placeholder="Paste COINMOD1:… or COINWS1:… here, then Import"></textarea>
+    <div id="status">Ready — drag Events (yellow) hats, then Conditions / Actions / FX.</div>
+  </footer>
+
+  <script>
+    /* ── Inlined CoinDuel Blockly defs (mirrors BlocklyDefinitions.ts) ── */
+    const H = { event: 45, condition: 195, action: 290, fx: 330, skin: 15, rules: 120, level: 210 };
+    const TYPE_TO_OP = {
+      when_coin_hit: 'WHEN_COIN_HIT', when_cushion_bounce: 'WHEN_CUSHION_BOUNCE',
+      when_power_charged: 'WHEN_POWER_CHARGED', when_foul_triggered: 'WHEN_FOUL_TRIGGERED',
+      when_timer_tick: 'WHEN_TIMER_TICK', when_game_start: 'WHEN_GAME_START', when_shot_fired: 'WHEN_SHOT_FIRED',
+      if_velocity_gt: 'IF_VELOCITY_GREATER_THAN', if_coin_tag: 'IF_COIN_TAG', if_probability: 'IF_PROBABILITY',
+      if_coins_left_lt: 'IF_REMAINING_COINS_LESS_THAN', if_var_gt: 'IF_VAR_GREATER_THAN',
+      apply_impulse: 'APPLY_IMPULSE', explode_radius: 'EXPLODE_RADIUS', swap_positions: 'SWAP_POSITIONS',
+      set_coin_position: 'SET_COIN_POSITION', show_coin_position: 'SHOW_COIN_POSITION',
+      change_friction: 'CHANGE_FRICTION', trigger_time_reverse: 'TRIGGER_TIME_REVERSE',
+      set_variable: 'SET_VARIABLE', change_variable: 'CHANGE_VARIABLE', tag_coin: 'TAG_COIN',
+      declare_win: 'DECLARE_WIN', declare_lose: 'DECLARE_LOSE',
+      play_meme_sound: 'PLAY_MEME_SOUND', spawn_world_text: 'SPAWN_WORLD_TEXT',
+      apply_squash_stretch: 'APPLY_SQUASH_STRETCH', screen_shake: 'SCREEN_SHAKE',
+      set_coin_skin: 'SET_COIN_SKIN', set_table_skin: 'SET_TABLE_SKIN',
+      math_add: 'MATH_ADD', math_sub: 'MATH_SUBTRACT', math_random: 'MATH_RANDOM_RANGE',
+    };
+    const FIELD_MAP = {
+      when_power_charged: { PERCENT: 'percent' }, when_timer_tick: { INTERVAL: 'interval' },
+      if_velocity_gt: { VALUE: 'value' }, if_coin_tag: { TAG: 'tag' }, if_probability: { PERCENT: 'percent' },
+      if_coins_left_lt: { COUNT: 'count' }, if_var_gt: { NAME: 'name', VALUE: 'value' },
+      apply_impulse: { X: 'x', Y: 'y' }, explode_radius: { FORCE: 'force', RADIUS: 'radius' },
+      set_coin_position: { X: 'x', Y: 'y' }, show_coin_position: { COLOR: 'color' },
+      change_friction: { VALUE: 'value' }, set_variable: { NAME: 'name', VALUE: 'value' },
+      change_variable: { NAME: 'name', DELTA: 'delta' }, tag_coin: { TAG: 'tag' },
+      declare_win: { REASON: 'reason' }, declare_lose: { REASON: 'reason' },
+      play_meme_sound: { SFX: 'sfxId', PITCH: 'pitch' }, spawn_world_text: { TEXT: 'text', COLOR: 'color' },
+      apply_squash_stretch: { SX: 'sx', SY: 'sy' }, screen_shake: { INTENSITY: 'intensity', DURATION: 'duration' },
+      set_coin_skin: { PRESET: 'preset', URL: 'url' }, set_table_skin: { FELT: 'felt', WALL: 'wall' },
+      math_add: { NAME: 'name', VALUE: 'value' }, math_sub: { NAME: 'name', VALUE: 'value' },
+      math_random: { NAME: 'name', MIN: 'min', MAX: 'max' },
+    };
+    const EVENTS = new Set(Object.keys(TYPE_TO_OP).filter((t) => t.startsWith('when_')));
+
+    const DEFS = [
+      { type: 'when_coin_hit', message0: 'when coin is hit', nextStatement: null, colour: H.event },
+      { type: 'when_cushion_bounce', message0: 'when cushion bounce', nextStatement: null, colour: H.event },
+      { type: 'when_power_charged', message0: 'when power charged > %1 %%', args0: [{ type: 'field_number', name: 'PERCENT', value: 70, min: 0, max: 100 }], nextStatement: null, colour: H.event },
+      { type: 'when_foul_triggered', message0: 'when foul triggered', nextStatement: null, colour: H.event },
+      { type: 'when_timer_tick', message0: 'when timer ticks every %1 sec', args0: [{ type: 'field_number', name: 'INTERVAL', value: 1, min: 0.1 }], nextStatement: null, colour: H.event },
+      { type: 'when_game_start', message0: 'when game starts', nextStatement: null, colour: H.event },
+      { type: 'when_shot_fired', message0: 'when shot fired', nextStatement: null, colour: H.event },
+      { type: 'if_velocity_gt', message0: 'if velocity > %1', args0: [{ type: 'field_number', name: 'VALUE', value: 200 }], previousStatement: null, nextStatement: null, colour: H.condition },
+      { type: 'if_coin_tag', message0: 'if coin has tag %1', args0: [{ type: 'field_input', name: 'TAG', text: 'boss' }], previousStatement: null, nextStatement: null, colour: H.condition },
+      { type: 'if_probability', message0: 'if chance %1 %%', args0: [{ type: 'field_number', name: 'PERCENT', value: 50, min: 0, max: 100 }], previousStatement: null, nextStatement: null, colour: H.condition },
+      { type: 'if_coins_left_lt', message0: 'if coins left < %1', args0: [{ type: 'field_number', name: 'COUNT', value: 3, min: 0 }], previousStatement: null, nextStatement: null, colour: H.condition },
+      { type: 'if_var_gt', message0: 'if var %1 > %2', args0: [{ type: 'field_input', name: 'NAME', text: 'KarmaPoints' }, { type: 'field_number', name: 'VALUE', value: 10 }], previousStatement: null, nextStatement: null, colour: H.condition },
+      { type: 'apply_impulse', message0: 'apply impulse x %1 y %2', args0: [{ type: 'field_number', name: 'X', value: 0 }, { type: 'field_number', name: 'Y', value: 400 }], previousStatement: null, nextStatement: null, colour: H.action },
+      { type: 'explode_radius', message0: 'explode force %1 radius %2', args0: [{ type: 'field_number', name: 'FORCE', value: 800 }, { type: 'field_number', name: 'RADIUS', value: 120 }], previousStatement: null, nextStatement: null, colour: H.action },
+      { type: 'swap_positions', message0: 'swap positions', previousStatement: null, nextStatement: null, colour: H.action },
+      { type: 'set_coin_position', message0: 'set coin position x %1 y %2', args0: [{ type: 'field_number', name: 'X', value: 0 }, { type: 'field_number', name: 'Y', value: 0 }], previousStatement: null, nextStatement: null, colour: H.action },
+      { type: 'show_coin_position', message0: 'show coin position color %1', args0: [{ type: 'field_input', name: 'COLOR', text: '#80DEEA' }], previousStatement: null, nextStatement: null, colour: H.fx },
+      { type: 'change_friction', message0: 'change friction %1', args0: [{ type: 'field_number', name: 'VALUE', value: 0.1, min: 0, max: 1 }], previousStatement: null, nextStatement: null, colour: H.action },
+      { type: 'trigger_time_reverse', message0: 'trigger time reverse', previousStatement: null, nextStatement: null, colour: H.action },
+      { type: 'set_variable', message0: 'set %1 to %2', args0: [{ type: 'field_input', name: 'NAME', text: 'KarmaPoints' }, { type: 'field_number', name: 'VALUE', value: 0 }], previousStatement: null, nextStatement: null, colour: H.action },
+      { type: 'change_variable', message0: 'change %1 by %2', args0: [{ type: 'field_input', name: 'NAME', text: 'KarmaPoints' }, { type: 'field_number', name: 'DELTA', value: 1 }], previousStatement: null, nextStatement: null, colour: H.action },
+      { type: 'tag_coin', message0: 'tag coin %1', args0: [{ type: 'field_input', name: 'TAG', text: 'boss' }], previousStatement: null, nextStatement: null, colour: H.action },
+      { type: 'declare_win', message0: 'declare WIN %1', args0: [{ type: 'field_input', name: 'REASON', text: 'custom' }], previousStatement: null, colour: H.rules },
+      { type: 'declare_lose', message0: 'declare LOSE %1', args0: [{ type: 'field_input', name: 'REASON', text: 'custom' }], previousStatement: null, colour: 0 },
+      { type: 'play_meme_sound', message0: 'play sound %1 pitch %2', args0: [{ type: 'field_input', name: 'SFX', text: 'shot' }, { type: 'field_number', name: 'PITCH', value: 1, min: 0.5, max: 2.4 }], previousStatement: null, nextStatement: null, colour: H.fx },
+      { type: 'spawn_world_text', message0: 'world text %1 color %2', args0: [{ type: 'field_input', name: 'TEXT', text: 'BONK!' }, { type: 'field_input', name: 'COLOR', text: '#FFE082' }], previousStatement: null, nextStatement: null, colour: H.fx },
+      { type: 'apply_squash_stretch', message0: 'squash sx %1 sy %2', args0: [{ type: 'field_number', name: 'SX', value: 1.35 }, { type: 'field_number', name: 'SY', value: 0.7 }], previousStatement: null, nextStatement: null, colour: H.fx },
+      { type: 'screen_shake', message0: 'screen shake %1 for %2 s', args0: [{ type: 'field_number', name: 'INTENSITY', value: 0.12 }, { type: 'field_number', name: 'DURATION', value: 0.2 }], previousStatement: null, nextStatement: null, colour: H.fx },
+      { type: 'set_coin_skin', message0: 'set coin skin preset %1 url/base64 %2', args0: [{ type: 'field_dropdown', name: 'PRESET', options: [['gold','gold'],['silver','silver'],['copper','copper'],['ice','ice'],['coin_1','coin_1'],['coin_2','coin_2'],['(none)','']] }, { type: 'field_input', name: 'URL', text: '' }], previousStatement: null, nextStatement: null, colour: H.skin },
+      { type: 'set_table_skin', message0: 'set table felt %1 wall %2', args0: [{ type: 'field_dropdown', name: 'FELT', options: [['table_1','table_1'],['board','board'],['board1','board1'],['board2','board2'],['bg1','bg1']] }, { type: 'field_dropdown', name: 'WALL', options: [['wall_1','wall_1'],['table_wall','table_wall']] }], previousStatement: null, nextStatement: null, colour: H.skin },
+      { type: 'math_add', message0: 'add %2 to %1', args0: [{ type: 'field_input', name: 'NAME', text: 'KarmaPoints' }, { type: 'field_number', name: 'VALUE', value: 1 }], previousStatement: null, nextStatement: null, colour: H.rules },
+      { type: 'math_sub', message0: 'subtract %2 from %1', args0: [{ type: 'field_input', name: 'NAME', text: 'KarmaPoints' }, { type: 'field_number', name: 'VALUE', value: 1 }], previousStatement: null, nextStatement: null, colour: H.rules },
+      { type: 'math_random', message0: 'random %2..%3 → %1', args0: [{ type: 'field_input', name: 'NAME', text: 'ExplosionPower' }, { type: 'field_number', name: 'MIN', value: 1 }, { type: 'field_number', name: 'MAX', value: 100 }], previousStatement: null, nextStatement: null, colour: H.rules },
+      { type: 'config_win_clear_all', message0: 'WIN rule: clear all coins', colour: H.rules },
+      { type: 'config_win_score', message0: 'WIN rule: reach score %1', args0: [{ type: 'field_number', name: 'SCORE', value: 100 }], colour: H.rules },
+      { type: 'config_win_survive', message0: 'WIN rule: survive %1 sec', args0: [{ type: 'field_number', name: 'SEC', value: 60 }], colour: H.rules },
+      { type: 'config_lose_striker_fall', message0: 'LOSE rule: striker falls off table', colour: 0 },
+      { type: 'config_lose_shot_limit', message0: 'LOSE rule: shot limit %1', args0: [{ type: 'field_number', name: 'COUNT', value: 10 }], colour: 0 },
+      { type: 'config_physics', message0: 'physics friction %1 restitution %2 time-reverse %3', args0: [{ type: 'field_number', name: 'FRICTION', value: 0.35, min: 0, max: 1 }, { type: 'field_number', name: 'RESTITUTION', value: 1, min: 0, max: 2 }, { type: 'field_dropdown', name: 'TIME_REVERSE', options: [['ON','true'],['OFF','false']] }], colour: H.rules },
+      { type: 'level_setup', message0: 'level id %1 size %2 x %3 wall %4', args0: [{ type: 'field_number', name: 'ID', value: 1, min: 1 }, { type: 'field_number', name: 'WIDTH', value: 800, min: 200 }, { type: 'field_number', name: 'HEIGHT', value: 600, min: 200 }, { type: 'field_number', name: 'WALL', value: 64, min: 8 }], colour: H.level },
+      { type: 'level_place', message0: 'place %1 at x %2 y %3 r %4 class %5 skin %6 url %7 meme %8 mudμ %9', args0: [
+        { type: 'field_dropdown', name: 'KIND', options: [['出手币 striker','striker'],['目标币 target','target'],['击退 knockback','knockback'],['冰冻 freeze','freeze'],['闪身 flash','flash'],['炸弹 bomb','bomb'],['障碍 block','block'],['泥地 mud','mud']] },
+        { type: 'field_number', name: 'X', value: 0 }, { type: 'field_number', name: 'Y', value: 0 },
+        { type: 'field_number', name: 'RADIUS', value: 32, min: 8 }, { type: 'field_number', name: 'CLASS', value: 1, min: 1, max: 20 },
+        { type: 'field_dropdown', name: 'SKIN', options: [['(none)',''],['gold','gold'],['silver','silver'],['copper','copper'],['ice','ice'],['coin_1','coin_1'],['coin_2','coin_2']] },
+        { type: 'field_input', name: 'URL', text: '' }, { type: 'field_input', name: 'MEME', text: '' },
+        { type: 'field_number', name: 'FRICTION', value: 0.5, min: 0, max: 1 }
+      ], colour: H.level },
+      { type: 'level_table_skin', message0: 'level table felt %1 wall %2', args0: [{ type: 'field_dropdown', name: 'FELT', options: [['(default)',''],['table_1','table_1'],['board','board'],['board1','board1'],['board2','board2'],['bg1','bg1']] }, { type: 'field_dropdown', name: 'WALL', options: [['(default)',''],['wall_1','wall_1'],['table_wall','table_wall']] }], colour: H.level },
+    ];
+
+    const TOOLBOX = {
+      kind: 'categoryToolbox',
+      contents: [
+        { kind: 'category', name: '🟢 Level', colour: String(H.level), contents: ['level_setup','level_place','level_table_skin'].map((t) => ({ kind: 'block', type: t })) },
+        { kind: 'category', name: '🟡 Events', colour: String(H.event), contents: ['when_game_start','when_coin_hit','when_cushion_bounce','when_power_charged','when_foul_triggered','when_timer_tick','when_shot_fired'].map((t) => ({ kind: 'block', type: t })) },
+        { kind: 'category', name: '🔵 Conditions', colour: String(H.condition), contents: ['if_velocity_gt','if_coin_tag','if_probability','if_coins_left_lt','if_var_gt'].map((t) => ({ kind: 'block', type: t })) },
+        { kind: 'category', name: '🟣 Actions', colour: String(H.action), contents: ['apply_impulse','explode_radius','swap_positions','set_coin_position','change_friction','trigger_time_reverse','set_variable','change_variable','tag_coin','declare_win','declare_lose'].map((t) => ({ kind: 'block', type: t })) },
+        { kind: 'category', name: '🔴 Juice FX', colour: String(H.fx), contents: ['play_meme_sound','spawn_world_text','show_coin_position','apply_squash_stretch','screen_shake'].map((t) => ({ kind: 'block', type: t })) },
+        { kind: 'category', name: '🎨 Skins', colour: String(H.skin), contents: ['set_coin_skin','set_table_skin'].map((t) => ({ kind: 'block', type: t })) },
+        { kind: 'category', name: '⚙ Rules / Math', colour: String(H.rules), contents: ['config_win_clear_all','config_win_score','config_win_survive','config_lose_striker_fall','config_lose_shot_limit','config_physics','math_add','math_sub','math_random'].map((t) => ({ kind: 'block', type: t })) },
+      ],
+    };
+
+    function propsFrom(block) {
+      const map = FIELD_MAP[block.type] || {};
+      const out = {};
+      for (const [field, key] of Object.entries(map)) {
+        const raw = block.getFieldValue(field);
+        if (raw === null || raw === undefined) continue;
+        if (typeof raw === 'string' && /^-?\d+(\.\d+)?$/.test(raw)) out[key] = Number(raw);
+        else if (raw === 'true') out[key] = true;
+        else if (raw === 'false') out[key] = false;
+        else out[key] = raw;
+      }
+      return out;
+    }
+
+    function walkStack(hat) {
+      const out = [hat];
+      let cur = hat.getNextBlock();
+      let g = 0;
+      while (cur && g++ < 128) { out.push(cur); cur = cur.getNextBlock(); }
+      return out;
+    }
+
+    function hashText(text) {
+      let h = 2166136261;
+      for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+      return (h >>> 0).toString(16).padStart(8, '0');
+    }
+
+    function placeToItem(kind, x, y, radius, extra) {
+      extra = extra || {};
+      var cls = extra.classId || 1;
+      var skinBits = {};
+      if (extra.skin) skinBits.skinKey = extra.skin;
+      if (extra.url) skinBits.skin = { default: extra.url, idle: extra.url };
+      if (extra.meme) skinBits.memeId = extra.meme;
+      if (kind === 'striker') return Object.assign({ type: 'coin', class: cls, x: x, y: y, canshot: true, radius: radius }, skinBits);
+      if (kind === 'target') return Object.assign({ type: 'coin', class: cls, x: x, y: y, canshot: false, radius: radius }, skinBits);
+      if (kind === 'knockback') return Object.assign({ type: 'coin', class: cls, x: x, y: y, canshot: false, radius: radius, behavior: 'KnockbackBehavior', behaviors: ['KnockbackBehavior'] }, skinBits);
+      if (kind === 'freeze') return Object.assign({ type: 'coin', class: cls, x: x, y: y, canshot: false, radius: radius, behavior: 'FreezeBehavior', behaviors: ['FreezeBehavior'] }, skinBits);
+      if (kind === 'flash') return Object.assign({ type: 'coin', class: cls, x: x, y: y, canshot: false, radius: radius, behavior: 'FlashStepBehavior', behaviors: ['FlashStepBehavior'] }, skinBits);
+      if (kind === 'bomb') return Object.assign({ type: 'bomb', class: cls, x: x, y: y, radius: radius }, skinBits);
+      if (kind === 'block') return { type: 'block', x: x, y: y, shape: 'circle', radius: radius };
+      if (kind === 'mud') return { type: 'mud', x: x, y: y, shape: 'circle', radius: radius, friction: extra.friction != null ? extra.friction : 0.5 };
+      return Object.assign({ type: 'coin', class: cls, x: x, y: y, canshot: false, radius: radius }, skinBits);
+    }
+
+    function workspaceToMod(ws) {
+      const tops = ws.getTopBlocks(true);
+      const pipelines = [];
+      const graphBlocks = [];
+      const win = [];
+      const lose = [];
+      let physics = { tableFriction: 0.35, restitutionScale: 1, enableTimeReversePenalty: true, aimPowerScale: 1 };
+      const varNames = new Set(['KarmaPoints', 'ExplosionPower']);
+      const levelDraft = { id: 1, width: 800, height: 600, wall: 64, coins: [], felt: '', wallSkin: '' };
+      let hasLevel = false;
+
+      for (const top of tops) {
+        if (top.type.startsWith('config_')) {
+          if (top.type === 'config_win_clear_all') win.push({ type: 'CLEAR_ALL_COINS' });
+          else if (top.type === 'config_win_score') win.push({ type: 'REACH_TARGET_SCORE', value: Number(top.getFieldValue('SCORE') || 100) });
+          else if (top.type === 'config_win_survive') win.push({ type: 'SURVIVE_TIME_LIMIT', value: Number(top.getFieldValue('SEC') || 60) });
+          else if (top.type === 'config_lose_striker_fall') lose.push({ type: 'STRIKER_FALLS_OFF_TABLE' });
+          else if (top.type === 'config_lose_shot_limit') lose.push({ type: 'SHOT_LIMIT', value: Number(top.getFieldValue('COUNT') || 10) });
+          else if (top.type === 'config_physics') {
+            physics = {
+              tableFriction: Number(top.getFieldValue('FRICTION') || 0.35),
+              restitutionScale: Number(top.getFieldValue('RESTITUTION') || 1),
+              enableTimeReversePenalty: String(top.getFieldValue('TIME_REVERSE')) !== 'false',
+              aimPowerScale: 1,
+            };
+          }
+          continue;
+        }
+        if (top.type.startsWith('level_')) {
+          hasLevel = true;
+          if (top.type === 'level_setup') {
+            levelDraft.id = Number(top.getFieldValue('ID') || 1);
+            levelDraft.width = Number(top.getFieldValue('WIDTH') || 800);
+            levelDraft.height = Number(top.getFieldValue('HEIGHT') || 600);
+            levelDraft.wall = Number(top.getFieldValue('WALL') || 64);
+          } else if (top.type === 'level_table_skin') {
+            levelDraft.felt = String(top.getFieldValue('FELT') || 'table_1');
+            levelDraft.wallSkin = String(top.getFieldValue('WALL') || 'wall_1');
+          } else if (top.type === 'level_place') {
+            levelDraft.coins.push(placeToItem(
+              String(top.getFieldValue('KIND') || 'target'),
+              Number(top.getFieldValue('X') || 0),
+              Number(top.getFieldValue('Y') || 0),
+              Number(top.getFieldValue('RADIUS') || 32),
+              {
+                classId: Number(top.getFieldValue('CLASS') || 1),
+                skin: String(top.getFieldValue('SKIN') || ''),
+                url: String(top.getFieldValue('URL') || ''),
+                meme: String(top.getFieldValue('MEME') || ''),
+                friction: Number(top.getFieldValue('FRICTION') || 0.5)
+              }
+            ));
+          }
+          continue;
+        }
+        if (!EVENTS.has(top.type)) continue;
+        const eventOp = TYPE_TO_OP[top.type];
+        const chain = walkStack(top);
+        const eventProps = propsFrom(top);
+        const steps = [];
+        let prevId = null;
+        for (let i = 0; i < chain.length; i++) {
+          const b = chain[i];
+          const opcode = TYPE_TO_OP[b.type];
+          if (!opcode) continue;
+          const props = propsFrom(b);
+          const id = b.id || ('b_' + i);
+          const visual = {
+            id, opcode, nextId: null,
+            props: Object.keys(props).map((k) => ({ key: k, label: k, value: props[k] })),
+            x: -40, y: 120 - i * 40,
+          };
+          if (prevId) {
+            const prev = graphBlocks.find((g) => g.id === prevId);
+            if (prev) prev.nextId = id;
+          }
+          graphBlocks.push(visual);
+          prevId = id;
+          if (i === 0) continue;
+          steps.push({ opcode, props });
+          if (typeof props.name === 'string') varNames.add(props.name);
+        }
+        const pipe = { id: top.id || ('pipe_' + pipelines.length), event: eventOp, steps };
+        if (Object.keys(eventProps).length) pipe.eventProps = eventProps;
+        pipelines.push(pipe);
+      }
+
+      if (!win.length) win.push({ type: 'CLEAR_ALL_COINS' });
+      if (!lose.length) lose.push({ type: 'STRIKER_FALLS_OFF_TABLE' });
+
+      const mod = {
+        schemaVersion: 1,
+        id: 'mod_' + Date.now().toString(36),
+        name: document.getElementById('modName').value || 'Blockly Mode',
+        author: document.getElementById('modAuthor').value || undefined,
+        version: Date.now(),
+        graph: { blocks: graphBlocks },
+        pipelines,
+        win, lose, physics,
+        variables: Array.from(varNames).map((name) => ({
+          name, initial: name === 'ExplosionPower' ? 50 : 0,
+        })),
+      };
+      if (hasLevel) {
+        mod.level = {
+          id: levelDraft.id,
+          width: levelDraft.width,
+          height: levelDraft.height,
+          wall: { thickness: levelDraft.wall },
+          coins: levelDraft.coins,
+        };
+        if (levelDraft.felt || levelDraft.wallSkin) {
+          mod.level.table = {};
+          if (levelDraft.felt) mod.level.table.felt = levelDraft.felt;
+          if (levelDraft.wallSkin) mod.level.table.wall = levelDraft.wallSkin;
+        }
+      }
+      const raw = JSON.stringify(mod);
+      mod.hash = hashText(raw);
+      return mod;
+    }
+
+    function toShare(mod) {
+      const json = JSON.stringify(mod);
+      return 'COINMOD1:' + btoa(unescape(encodeURIComponent(json)));
+    }
+
+    function fromShare(code) {
+      const t = code.trim();
+      if (!t.startsWith('COINMOD1:')) return null;
+      try {
+        const json = decodeURIComponent(escape(atob(t.slice(8))));
+        const data = JSON.parse(json);
+        if (data.schemaVersion !== 1 || !Array.isArray(data.pipelines)) return null;
+        return data;
+      } catch { return null; }
+    }
+
+    function compress(text) {
+      if (window.LZString) return 'lz:' + LZString.compressToBase64(text);
+      return 'b64:' + btoa(unescape(encodeURIComponent(text)));
+    }
+    function decompress(payload) {
+      try {
+        if (payload.startsWith('lz:') && window.LZString) return LZString.decompressFromBase64(payload.slice(3));
+        if (payload.startsWith('b64:')) return decodeURIComponent(escape(atob(payload.slice(4))));
+        return decodeURIComponent(escape(atob(payload)));
+      } catch { return null; }
+    }
+
+    function setStatus(msg, kind) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = kind || '';
+    }
+
+    /* ── Live preview sandbox (mirrors LivePreviewSandbox.ts) ── */
+    const previewCanvas = document.getElementById('previewCanvas');
+    const previewStats = document.getElementById('previewStats');
+    const pctx = previewCanvas.getContext('2d');
+    let liveMod = null;
+    let liveTimer = null;
+    const t0 = performance.now();
+
+    function feltColor(mod) {
+      let felt = (mod && mod.level && mod.level.table && mod.level.table.felt) || 'table_1';
+      for (const pipe of (mod && mod.pipelines) || []) {
+        for (const step of pipe.steps || []) {
+          if (step.opcode === 'SET_TABLE_SKIN' && step.props && step.props.felt) felt = step.props.felt;
+        }
+      }
+      return ({ table_1: '#1b5e20', board: '#2e7d32', board1: '#33691e', board2: '#1b5e4a', bg1: '#37474f' })[felt] || '#1b5e20';
+    }
+
+    function extractMarkers(mod) {
+      const coins = [], blasts = [], impulses = [];
+      let idx = 0;
+      const tableW = (mod && mod.level && mod.level.width) || 800;
+      const tableH = (mod && mod.level && mod.level.height) || 600;
+      if (mod && mod.level && mod.level.coins) {
+        for (const item of mod.level.coins) {
+          const type = item.type || 'coin';
+          let label = type, kind = type;
+          if (type === 'coin') {
+            if (item.canshot !== false) { label = 'striker'; kind = 'striker'; }
+            else if ((item.behaviors || [])[0]) { label = String(item.behaviors[0]).replace('Behavior',''); kind = label.toLowerCase(); }
+            else { label = 'target'; kind = 'target'; }
+          }
+          coins.push({ x: +item.x || 0, y: +item.y || 0, label: label, kind: kind });
+        }
+      }
+      for (const pipe of (mod && mod.pipelines) || []) {
+        for (const step of pipe.steps || []) {
+          const p = step.props || {};
+          if (step.opcode === 'SET_COIN_POSITION') coins.push({ x: +p.x || 0, y: +p.y || 0, label: 'P' + (++idx), kind: 'runtime' });
+          if (step.opcode === 'EXPLODE_RADIUS') {
+            const o = coins[coins.length - 1] || { x: 0, y: 0 };
+            blasts.push({ x: o.x, y: o.y, radius: +p.radius || 120 });
+          }
+          if (step.opcode === 'APPLY_IMPULSE') {
+            const o = coins[coins.length - 1] || { x: 0, y: 0 };
+            impulses.push({ x: o.x, y: o.y, ix: +p.x || 0, iy: +p.y || 0 });
+          }
+        }
+      }
+      if (!coins.length) {
+        coins.push({ x: -120, y: 0, label: 'striker', kind: 'striker' });
+        coins.push({ x: 80, y: 40, label: 'target', kind: 'target' });
+        coins.push({ x: 140, y: -30, label: 'target', kind: 'target' });
+      }
+      return { coins, blasts, impulses, tableW, tableH };
+    }
+
+    function roundRect(ctx, x, y, w, h, r) {
+      const rr = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + rr, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rr);
+      ctx.arcTo(x + w, y + h, x, y + h, rr);
+      ctx.arcTo(x, y + h, x, y, rr);
+      ctx.arcTo(x, y, x + w, y, rr);
+      ctx.closePath();
+    }
+
+    function resizePreview() {
+      const wrap = document.getElementById('previewWrap');
+      const w = wrap.clientWidth || 280;
+      const h = wrap.clientHeight || 360;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      previewCanvas.width = Math.floor(w * dpr);
+      previewCanvas.height = Math.floor(h * dpr);
+      previewCanvas.style.width = w + 'px';
+      previewCanvas.style.height = h + 'px';
+      pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawPreview();
+    }
+
+    function drawPreview() {
+      const w = previewCanvas.clientWidth || 280;
+      const h = previewCanvas.clientHeight || 360;
+      const ctx = pctx;
+      ctx.clearRect(0, 0, w, h);
+      const bg = ctx.createLinearGradient(0, 0, 0, h);
+      bg.addColorStop(0, '#1a2433'); bg.addColorStop(1, '#10161f');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
+
+      const markers = extractMarkers(liveMod);
+      const tableW = markers.tableW || 800, tableH = markers.tableH || 600, cx = w / 2, cy = h * 0.42;
+      const scale = Math.min((w - 32) / tableW, (h * 0.55) / tableH);
+      const phys = (liveMod && liveMod.physics) || {};
+      const friction = phys.tableFriction != null ? phys.tableFriction : 0.35;
+
+      ctx.save();
+      ctx.translate(cx, cy); ctx.scale(scale, scale);
+      ctx.fillStyle = feltColor(liveMod);
+      roundRect(ctx, -tableW / 2, -tableH / 2, tableW, tableH, 18); ctx.fill();
+      ctx.strokeStyle = '#6d4c2f';
+      ctx.lineWidth = Math.max(8, ((liveMod && liveMod.level && liveMod.level.wall && liveMod.level.wall.thickness) || 64) * 0.25);
+      roundRect(ctx, -tableW / 2, -tableH / 2, tableW, tableH, 18); ctx.stroke();
+      if (friction < 0.2) { ctx.fillStyle = 'rgba(180,230,255,0.18)'; roundRect(ctx, -tableW / 2, -tableH / 2, tableW, tableH, 18); ctx.fill(); }
+      else if (friction > 0.55) { ctx.fillStyle = 'rgba(90,60,30,0.22)'; roundRect(ctx, -tableW / 2, -tableH / 2, tableW, tableH, 18); ctx.fill(); }
+      const pulse = 0.5 + 0.5 * Math.sin((performance.now() - t0) / 400);
+      for (const b of markers.blasts) {
+        ctx.beginPath(); ctx.arc(b.x, -b.y, b.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255,112,67,' + (0.25 + 0.35 * pulse) + ')'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = 'rgba(255,112,67,' + (0.08 + 0.06 * pulse) + ')'; ctx.fill();
+      }
+      for (const imp of markers.impulses) {
+        const len = Math.min(80, Math.hypot(imp.ix, imp.iy) * 0.05 + 20);
+        const ang = Math.atan2(-imp.iy, imp.ix);
+        ctx.strokeStyle = '#ce93d8'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(imp.x, -imp.y);
+        ctx.lineTo(imp.x + Math.cos(ang) * len, -imp.y + Math.sin(ang) * len); ctx.stroke();
+      }
+      for (const c of markers.coins) {
+        ctx.beginPath(); ctx.arc(c.x, -c.y, 14, 0, Math.PI * 2);
+        ctx.fillStyle = c.label === 'striker' ? '#ffe082' : '#eceff1'; ctx.fill();
+        ctx.strokeStyle = '#263238'; ctx.lineWidth = 2; ctx.stroke();
+        if (c.label) { ctx.fillStyle = '#fffde7'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(c.label, c.x, -c.y - 20); }
+      }
+      ctx.restore();
+
+      ctx.fillStyle = '#5ec8ff'; ctx.font = 'bold 12px Segoe UI,sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText('LIVE PREVIEW', 14, 22);
+      if (liveMod && liveMod.name) { ctx.fillStyle = '#e8eef8'; ctx.font = '11px Segoe UI,sans-serif'; ctx.fillText(liveMod.name, 14, 38); }
+    }
+
+    function updatePreviewStats(mod) {
+      const p = (mod && mod.physics) || {};
+      const n = (mod && mod.level && mod.level.coins && mod.level.coins.length) || 0;
+      const size = mod && mod.level ? (mod.level.width + '×' + mod.level.height) : '—';
+      previewStats.innerHTML =
+        '<strong>level</strong> ' + size + ' · <strong>objects</strong> ' + n +
+        '<br><strong>μ</strong> ' + (p.tableFriction != null ? Number(p.tableFriction).toFixed(2) : '0.35') +
+        ' · <strong>pipelines</strong> ' + ((mod && mod.pipelines && mod.pipelines.length) || 0) +
+        ' · <strong>win</strong> ' + ((mod && mod.win && mod.win.map(function (w) { return w.type; }).join(', ')) || '—');
+    }
+
+    function dispatchLive(mod) {
+      liveMod = mod;
+      drawPreview();
+      updatePreviewStats(mod);
+      const payload = { type: 'CoinDuel:modConfig', mod: mod, modJson: JSON.stringify(mod), hash: mod.hash || null, at: Date.now() };
+      try {
+        if (window.parent && window.parent !== window) window.parent.postMessage(payload, '*');
+        window.dispatchEvent(new CustomEvent('CoinDuel:modConfig', { detail: payload }));
+      } catch (_) {}
+    }
+
+    function scheduleLive() {
+      if (liveTimer) clearTimeout(liveTimer);
+      liveTimer = setTimeout(function () {
+        liveTimer = null;
+        try { dispatchLive(workspaceToMod(workspace)); }
+        catch (_) {}
+      }, 80);
+    }
+
+    function isLiveEvent(e) {
+      if (!e || e.isUiEvent) return false;
+      var t = String(e.type || '');
+      return /create|delete|change|move/i.test(t)
+        || t === Blockly.Events.BLOCK_CHANGE
+        || t === Blockly.Events.BLOCK_CREATE
+        || t === Blockly.Events.BLOCK_DELETE
+        || t === Blockly.Events.BLOCK_MOVE;
+    }
+
+    Blockly.defineBlocksWithJsonArray(DEFS);
+    const workspace = Blockly.inject('workspace', {
+      toolbox: TOOLBOX,
+      media: 'https://unpkg.com/blockly@10.4.3/media/',
+      trashcan: true,
+      scrollbars: true,
+      zoom: { controls: true, wheel: true, startScale: 0.9, maxScale: 2, minScale: 0.4 },
+      grid: { spacing: 24, length: 3, colour: '#333', snap: true },
+      move: { scrollbars: true, drag: true, wheel: true },
+      renderer: 'zelos',
+    });
+
+    workspace.addChangeListener(function (e) {
+      if (isLiveEvent(e)) scheduleLive();
+    });
+
+    // Starter stack
+    (() => {
+      const hat = workspace.newBlock('when_coin_hit');
+      hat.initSvg(); hat.render(); hat.moveBy(40, 40);
+      const fx = workspace.newBlock('spawn_world_text');
+      fx.initSvg(); fx.render();
+      fx.previousConnection.connect(hat.nextConnection);
+      const shake = workspace.newBlock('screen_shake');
+      shake.initSvg(); shake.render();
+      shake.previousConnection.connect(fx.nextConnection);
+      const phys = workspace.newBlock('config_physics');
+      phys.initSvg(); phys.render(); phys.moveBy(420, 40);
+      const setup = workspace.newBlock('level_setup');
+      setup.initSvg(); setup.render(); setup.moveBy(420, 120);
+      const place1 = workspace.newBlock('level_place');
+      place1.initSvg(); place1.render(); place1.moveBy(420, 180);
+      place1.setFieldValue('striker', 'KIND');
+      place1.setFieldValue(-120, 'X');
+      const place2 = workspace.newBlock('level_place');
+      place2.initSvg(); place2.render(); place2.moveBy(420, 240);
+      place2.setFieldValue('target', 'KIND');
+      place2.setFieldValue(100, 'X');
+    })();
+
+    function resize() {
+      Blockly.svgResize(workspace);
+      resizePreview();
+    }
+    window.addEventListener('resize', resize);
+    new ResizeObserver(resize).observe(document.getElementById('workspace'));
+    new ResizeObserver(resizePreview).observe(document.getElementById('previewWrap'));
+    requestAnimationFrame(function tick() { drawPreview(); requestAnimationFrame(tick); });
+    scheduleLive();
+
+    function rebuildWorkspaceFromMod(mod) {
+      workspace.clear();
+      var x = 40, y = 40;
+      if (mod.physics) {
+        var phys = workspace.newBlock('config_physics');
+        phys.initSvg(); phys.render(); phys.moveBy(420, 40);
+        phys.setFieldValue(mod.physics.tableFriction != null ? mod.physics.tableFriction : 0.35, 'FRICTION');
+        phys.setFieldValue(mod.physics.restitutionScale != null ? mod.physics.restitutionScale : 1, 'RESTITUTION');
+        phys.setFieldValue(mod.physics.enableTimeReversePenalty === false ? 'false' : 'true', 'TIME_REVERSE');
+      }
+      (mod.win || []).forEach(function (w, i) {
+        var t = w.type === 'REACH_TARGET_SCORE' ? 'config_win_score'
+          : w.type === 'SURVIVE_TIME_LIMIT' ? 'config_win_survive' : 'config_win_clear_all';
+        var b = workspace.newBlock(t);
+        b.initSvg(); b.render(); b.moveBy(420, 100 + i * 50);
+        if (t === 'config_win_score') b.setFieldValue(w.value || 100, 'SCORE');
+        if (t === 'config_win_survive') b.setFieldValue(w.value || 60, 'SEC');
+      });
+      (mod.lose || []).forEach(function (l, i) {
+        var t = l.type === 'SHOT_LIMIT' ? 'config_lose_shot_limit' : 'config_lose_striker_fall';
+        var b = workspace.newBlock(t);
+        b.initSvg(); b.render(); b.moveBy(420, 260 + i * 50);
+        if (t === 'config_lose_shot_limit') b.setFieldValue(l.value || 10, 'COUNT');
+      });
+      if (mod.level) {
+        var setup = workspace.newBlock('level_setup');
+        setup.initSvg(); setup.render(); setup.moveBy(x, y);
+        setup.setFieldValue(mod.level.id || 1, 'ID');
+        setup.setFieldValue(mod.level.width || 800, 'WIDTH');
+        setup.setFieldValue(mod.level.height || 600, 'HEIGHT');
+        setup.setFieldValue((mod.level.wall && mod.level.wall.thickness) || 64, 'WALL');
+        y += 60;
+        if (mod.level.table) {
+          var ts = workspace.newBlock('level_table_skin');
+          ts.initSvg(); ts.render(); ts.moveBy(x, y);
+          if (mod.level.table.felt) ts.setFieldValue(mod.level.table.felt, 'FELT');
+          if (mod.level.table.wall) ts.setFieldValue(mod.level.table.wall, 'WALL');
+          y += 50;
+        }
+        (mod.level.coins || []).forEach(function (c) {
+          var kind = 'target';
+          if (c.type === 'bomb') kind = 'bomb';
+          else if (c.type === 'block') kind = 'block';
+          else if (c.type === 'mud') kind = 'mud';
+          else if (c.canshot !== false && !(c.behaviors && c.behaviors[0])) kind = 'striker';
+          else if (c.behaviors && String(c.behaviors[0]).indexOf('Knock') >= 0) kind = 'knockback';
+          else if (c.behaviors && String(c.behaviors[0]).indexOf('Freeze') >= 0) kind = 'freeze';
+          else if (c.behaviors && String(c.behaviors[0]).indexOf('Flash') >= 0) kind = 'flash';
+          var b = workspace.newBlock('level_place');
+          b.initSvg(); b.render(); b.moveBy(x, y);
+          b.setFieldValue(kind, 'KIND');
+          b.setFieldValue(c.x || 0, 'X');
+          b.setFieldValue(c.y || 0, 'Y');
+          b.setFieldValue(c.radius || 32, 'RADIUS');
+          b.setFieldValue(c.class || 1, 'CLASS');
+          if (c.skinKey) b.setFieldValue(c.skinKey, 'SKIN');
+          if (c.skin && c.skin.default) b.setFieldValue(String(c.skin.default), 'URL');
+          if (c.memeId) b.setFieldValue(c.memeId, 'MEME');
+          if (c.friction != null) b.setFieldValue(c.friction, 'FRICTION');
+          y += 56;
+          if (y > 480) { y = 40; x += 520; }
+        });
+      }
+      // Rebuild simple event stacks from pipelines (best-effort)
+      var px = 40, py = 40;
+      if (mod.level) { px = 40; py = Math.min(y + 40, 40); }
+      (mod.pipelines || []).forEach(function (pipe, pi) {
+        var typeMap = {
+          WHEN_GAME_START: 'when_game_start', WHEN_COIN_HIT: 'when_coin_hit', WHEN_SHOT_FIRED: 'when_shot_fired',
+          WHEN_CUSHION_BOUNCE: 'when_cushion_bounce', WHEN_FOUL_TRIGGERED: 'when_foul_triggered',
+          WHEN_POWER_CHARGED: 'when_power_charged', WHEN_TIMER_TICK: 'when_timer_tick',
+          IF_VELOCITY_GREATER_THAN: 'if_velocity_gt', IF_PROBABILITY: 'if_probability', IF_COIN_TAG: 'if_coin_tag',
+          APPLY_IMPULSE: 'apply_impulse', EXPLODE_RADIUS: 'explode_radius', SET_COIN_POSITION: 'set_coin_position',
+          SWAP_POSITIONS: 'swap_positions', SPAWN_WORLD_TEXT: 'spawn_world_text', SCREEN_SHAKE: 'screen_shake',
+          PLAY_MEME_SOUND: 'play_meme_sound', DECLARE_WIN: 'declare_win', DECLARE_LOSE: 'declare_lose'
+        };
+        var hatType = typeMap[pipe.event];
+        if (!hatType || !Blockly.Blocks[hatType]) return;
+        var prev = workspace.newBlock(hatType);
+        prev.initSvg(); prev.render();
+        prev.moveBy(px + (pi % 2) * 280, py + Math.floor(pi / 2) * 220);
+        if (pipe.eventProps) {
+          if (pipe.eventProps.percent != null && prev.getField('PERCENT')) prev.setFieldValue(pipe.eventProps.percent, 'PERCENT');
+          if (pipe.eventProps.interval != null && prev.getField('INTERVAL')) prev.setFieldValue(pipe.eventProps.interval, 'INTERVAL');
+        }
+        (pipe.steps || []).forEach(function (step) {
+          var st = typeMap[step.opcode];
+          if (!st || !Blockly.Blocks[st]) return;
+          var nb = workspace.newBlock(st);
+          nb.initSvg(); nb.render();
+          var props = step.props || {};
+          if (st === 'apply_impulse') { if (props.x != null) nb.setFieldValue(props.x, 'X'); if (props.y != null) nb.setFieldValue(props.y, 'Y'); }
+          if (st === 'explode_radius') { if (props.force != null) nb.setFieldValue(props.force, 'FORCE'); if (props.radius != null) nb.setFieldValue(props.radius, 'RADIUS'); }
+          if (st === 'set_coin_position') { if (props.x != null) nb.setFieldValue(props.x, 'X'); if (props.y != null) nb.setFieldValue(props.y, 'Y'); }
+          if (st === 'spawn_world_text') { if (props.text) nb.setFieldValue(props.text, 'TEXT'); if (props.color) nb.setFieldValue(props.color, 'COLOR'); }
+          if (st === 'screen_shake') { if (props.intensity != null) nb.setFieldValue(props.intensity, 'INTENSITY'); if (props.duration != null) nb.setFieldValue(props.duration, 'DURATION'); }
+          if (st === 'if_velocity_gt' && props.value != null) nb.setFieldValue(props.value, 'VALUE');
+          if (st === 'if_probability' && props.percent != null) nb.setFieldValue(props.percent, 'PERCENT');
+          try { nb.previousConnection.connect(prev.nextConnection); } catch (_) {}
+          prev = nb;
+        });
+      });
+    }
+
+    document.getElementById('btnExportShare').onclick = () => {
+      const mod = workspaceToMod(workspace);
+      let code = '';
+      try {
+        code = toShare(mod);
+      } catch (e) {
+        setStatus('Share encode failed (code too large?). Remove Base64 URLs from place blocks.', 'err');
+        return;
+      }
+      document.getElementById('io').value = code;
+      try { localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod)); } catch (_) {}
+      setStatus('Exported COINMOD1 (' + code.length + ' chars). Cocos: 粘贴 Scratch → 试玩 Game', 'ok');
+    };
+    document.getElementById('btnExportJson').onclick = () => {
+      const mod = workspaceToMod(workspace);
+      document.getElementById('io').value = JSON.stringify(mod, null, 2);
+      setStatus('Exported ModConfig JSON' + (mod.level ? ' (includes level)' : '') + '.', 'ok');
+    };
+    document.getElementById('btnExportLevel').onclick = () => {
+      const mod = workspaceToMod(workspace);
+      const level = mod.level || { id: 1, width: 800, height: 600, wall: { thickness: 64 }, coins: [] };
+      document.getElementById('io').value = JSON.stringify(level, null, 2);
+      setStatus('Exported Level JSON (' + (level.coins || []).length + ' objects) — save as levels/' + level.id + '.json', 'ok');
+    };
+    document.getElementById('btnCopyJson').onclick = async () => {
+      const mod = workspaceToMod(workspace);
+      const text = JSON.stringify(mod, null, 2);
+      document.getElementById('io').value = text;
+      try { await navigator.clipboard.writeText(text); setStatus('JSON copied to clipboard.', 'ok'); }
+      catch { setStatus('JSON in box — clipboard blocked.', 'err'); }
+    };
+    document.getElementById('btnExportWs').onclick = () => {
+      const state = JSON.stringify(Blockly.serialization.workspaces.save(workspace));
+      document.getElementById('io').value = 'COINWS1:' + compress(state);
+      setStatus('Exported compressed workspace string (COINWS1).', 'ok');
+    };
+    document.getElementById('btnImportShare').onclick = () => {
+      const raw = document.getElementById('io').value.trim();
+      if (raw.startsWith('COINWS1:')) {
+        const payload = decompress(raw.slice(8));
+        if (!payload) { setStatus('Workspace decompress failed.', 'err'); return; }
+        try {
+          workspace.clear();
+          Blockly.serialization.workspaces.load(JSON.parse(payload), workspace);
+          setStatus('Workspace imported.', 'ok');
+        } catch (e) { setStatus('Workspace import failed: ' + e.message, 'err'); }
+        return;
+      }
+      if (raw.startsWith('COINMOD1:')) {
+        const mod = fromShare(raw);
+        if (!mod) { setStatus('Invalid COINMOD1 code.', 'err'); return; }
+        try { localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod)); } catch (_) {}
+        document.getElementById('io').value = JSON.stringify(mod, null, 2);
+        document.getElementById('modName').value = mod.name || 'Blockly Mode';
+        rebuildWorkspaceFromMod(mod);
+        setStatus('Imported COINMOD1 — level blocks rebuilt (' + ((mod.level && mod.level.coins && mod.level.coins.length) || 0) + ' objects). Rules stay in JSON if complex.', 'ok');
+        scheduleLive();
+        return;
+      }
+      try {
+        const mod = JSON.parse(raw);
+        if (mod.schemaVersion !== 1) throw new Error('bad schema');
+        localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod));
+        setStatus('Raw ModConfig JSON stored for runtime.', 'ok');
+      } catch {
+        setStatus('Paste COINMOD1:, COINWS1:, or ModConfig JSON.', 'err');
+      }
+    };
+    document.getElementById('btnClear').onclick = () => {
+      workspace.clear();
+      setStatus('Workspace cleared.');
+    };
+  </script>
+</body>
+</html>

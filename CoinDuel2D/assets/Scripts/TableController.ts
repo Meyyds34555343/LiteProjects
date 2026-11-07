@@ -1,4 +1,4 @@
-import { _decorator, Component, Node, Sprite, SpriteFrame, resources, UITransform, Prefab, instantiate } from 'cc';
+import { _decorator, Color, Component, Node, Sprite, SpriteFrame, resources, UITransform, Prefab, instantiate } from 'cc';
 const { ccclass, property } = _decorator;
 
 /** 单个缺口的定义 */
@@ -135,6 +135,34 @@ export class TableController extends Component {
 
         // 重建围墙段
         this._rebuildWalls();
+    }
+
+    /**
+     * 熱換桌布（世界空間 TableGreen，不碰 Canvas HUD）。
+     * frame 由 AssetSyncManager / DynamicAssetLoader 在 runtime 產生。
+     */
+    public applyFeltSkin(frame: SpriteFrame | null, tintHex?: string): void {
+        if (!this._tableSprite || !frame) return;
+        this._tableSprite.spriteFrame = frame;
+        if (tintHex) this._tableSprite.color = this._parseHex(tintHex);
+    }
+
+    /** 熱換圍牆貼圖並套到現有牆段。 */
+    public applyWallSkin(frame: SpriteFrame | null): void {
+        if (!frame) return;
+        this._wallSpriteFrame = frame;
+        if (!this._wallNode) return;
+        for (const child of this._wallNode.children) {
+            const sprite = child.getComponent(Sprite);
+            if (sprite) sprite.spriteFrame = frame;
+        }
+    }
+
+    private _parseHex(hex: string): Color {
+        const h = hex.replace('#', '');
+        const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+        if (Number.isNaN(n)) return Color.WHITE;
+        return new Color((n >> 16) & 255, (n >> 8) & 255, n & 255, 255);
     }
 
     /** 根据当前缺口配置重建所有围墙段（实例化 wallPrefab / cornerPrefab，不旋转，仅调整 contentSize） */

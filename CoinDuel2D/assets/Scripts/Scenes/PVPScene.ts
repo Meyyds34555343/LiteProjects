@@ -34,7 +34,7 @@ export class PVPScene extends Component {
                 director.loadScene('main');
             });
         });
-        SoundManager.instance.stopBGM();
+        SoundManager.instance?.stopBGM();
     }
 
     /** 翻译 PVP 场景中的 Label */

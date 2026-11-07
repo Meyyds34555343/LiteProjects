@@ -50,7 +50,13 @@ export class SoundManager extends Component {
     private _dirLoopClip: AudioClip = null;
 
     private _bgmSource: AudioSource = null;
+    private _pitchCtx: any = null;
+    private readonly _pitchBuffers = new Map<string, any>();
     private _currentBgmId: number = -1;
+    /** 最近一次请求播放的 BGM id，关闭音乐后重新打开时恢复 */
+    private _lastBgmId: number = 1;
+    /** 音乐开关（用户可通过 UI 切换） */
+    private _musicEnabled: boolean = true;
     private _bgmFadeTimer: number = 0;
     private _bgmFadingIn: boolean = false;
     private _bgmFadingOut: boolean = false;
@@ -84,24 +90,21 @@ export class SoundManager extends Component {
         }
     }
 
-    /** 硬币与墙碰撞 */
-    public playCollisionCoin() {
-        if (this.collisionCoin && this.audioSource) {
-            this.audioSource.playOneShot(this.collisionCoin);
-        }
+    /**
+     * 硬幣互撞。pitchMultiplier 依連鎖升高：
+     * 1.0 → 1.08 → 1.16 → 1.24…
+     */
+    public playCollisionCoin(pitchMultiplier = 1): void {
+        this._playPitched(this.collisionCoin, pitchMultiplier);
     }
 
-    public playSecondaryCollision() {
-        if (this.secondaryCollision && this.audioSource) {
-            this.audioSource.playOneShot(this.secondaryCollision);
-        }
+    public playSecondaryCollision(pitchMultiplier = 1): void {
+        this._playPitched(this.secondaryCollision, pitchMultiplier);
     }
 
     /** 硬币发射 */
-    public playShot() {
-        if (this.shot && this.audioSource) {
-            this.audioSource.playOneShot(this.shot);
-        }
+    public playShot(pitchMultiplier = 1): void {
+        this._playPitched(this.shot, pitchMultiplier);
     }
 
     /** 爆炸音效 */
@@ -117,11 +120,70 @@ export class SoundManager extends Component {
         }
     }
 
-    /** 播放任意 AudioClip（用于硬币自定义碰撞音效） */
-    public playClip(clip: AudioClip): void {
-        if (clip && this.audioSource) {
+    /** 播放任意 AudioClip。第二個參數只在發射音要升調時使用。 */
+    public playClip(clip: AudioClip, pitchMultiplier = 1): void {
+        this._playPitched(clip, pitchMultiplier);
+    }
+
+    /** 原調走原來的一次性播放。升調時用 Web Audio 改 playbackRate。 */
+    private _playPitched(clip: AudioClip | null, pitchMultiplier: number): void {
+        if (!clip || !this.audioSource) return;
+        const pitch = Math.min(2.4, Math.max(0.5, pitchMultiplier));
+        if (Math.abs(pitch - 1) <= 0.001) {
             this.audioSource.playOneShot(clip);
+            return;
         }
+        const cached = this._cachedPitchBuffer(clip);
+        if (cached) {
+            this._startPitched(cached, pitch);
+            return;
+        }
+        const url = clip.nativeUrl;
+        const ctx = this._pitchContext();
+        if (!url || !ctx) {
+            this.audioSource.playOneShot(clip);
+            return;
+        }
+        fetch(url)
+            .then((res) => res.arrayBuffer())
+            .then((data) => ctx.decodeAudioData(data))
+            .then((decoded: any) => {
+                this._pitchBuffers.set(url, decoded);
+                this._startPitched(decoded, pitch);
+            })
+            .catch(() => {
+                this.audioSource?.playOneShot(clip);
+            });
+    }
+
+    private _pitchContext(): any | null {
+        const host: any = typeof window !== 'undefined' ? window : null;
+        const Ctor = host?.AudioContext || host?.webkitAudioContext;
+        if (!Ctor) return null;
+        if (!this._pitchCtx) this._pitchCtx = new Ctor();
+        if (this._pitchCtx.state === 'suspended') this._pitchCtx.resume();
+        return this._pitchCtx;
+    }
+
+    private _cachedPitchBuffer(clip: AudioClip): any | null {
+        const url = clip.nativeUrl;
+        if (url && this._pitchBuffers.has(url)) return this._pitchBuffers.get(url);
+        const embedded = (clip as any)?._nativeAsset?.player?._buffer;
+        if (embedded && url) this._pitchBuffers.set(url, embedded);
+        return embedded ?? null;
+    }
+
+    private _startPitched(buffer: any, pitch: number): void {
+        const ctx = this._pitchContext();
+        if (!ctx) return;
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.playbackRate.value = pitch;
+        const gain = ctx.createGain();
+        gain.gain.value = this.audioSource?.volume ?? 1;
+        source.connect(gain);
+        gain.connect(ctx.destination);
+        source.start();
     }
 
     /** 游戏结束音效 */
@@ -185,7 +247,32 @@ export class SoundManager extends Component {
         if (this.dragRelease && this.audioSource) this.audioSource.playOneShot(this.dragRelease);
     }
 
+    /** 音乐开关是否开启 */
+    public get musicEnabled(): boolean {
+        return this._musicEnabled;
+    }
+
+    /** 设置音乐开关；开启时恢复最近一首 BGM */
+    public setMusicEnabled(enabled: boolean): boolean {
+        this._musicEnabled = enabled;
+        if (enabled) {
+            this.playBGM(this._lastBgmId);
+        } else {
+            this.stopBGM();
+        }
+        return this._musicEnabled;
+    }
+
+    /** 切换音乐开关，返回切换后的状态 */
+    public toggleMusic(): boolean {
+        return this.setMusicEnabled(!this._musicEnabled);
+    }
+
     public playBGM(id: number): void {
+        this._lastBgmId = id;
+        // 用户关闭了音乐：只记录 id，不实际播放
+        if (!this._musicEnabled) return;
+
         // 同一首 BGM 正在播放且未在淡出，跳过
         if (id === this._currentBgmId && this._bgmSource && this._bgmSource.playing && !this._bgmFadingOut) {
             return;
@@ -223,6 +310,8 @@ export class SoundManager extends Component {
                 return;
             }
             if (!this._bgmSource) return;
+            // 加载期间用户可能已关闭音乐
+            if (!this._musicEnabled) return;
             this._bgmSource.stop();
             this._bgmSource.clip = clip;
             this._bgmSource.loop = true;

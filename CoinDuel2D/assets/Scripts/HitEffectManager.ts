@@ -140,6 +140,8 @@ export class HitEffectManager extends Component {
     public shakeStartTime: number = 0;
     public shakeEndTime: number = 0;
     public shakeDir: Vec2 = new Vec2(1, 0);
+    /** 上一幀已經加到相機上的震動。下一幀先扣掉，避免一次次疊加。 */
+    private _shakeOffset: Vec2 = new Vec2();
 
     // ── 碰撞后追踪用 ──
     public isTrackingHitCoin: boolean = false;
@@ -303,6 +305,61 @@ export class HitEffectManager extends Component {
         return null;
     }
 
+    private _foulActive = false;
+    private _foulDone: (() => void) | null = null;
+
+    /**
+     * 打到兩枚以上：先以 0.3 倍速看 0.3 秒，第二枚硬幣閃紅，
+     * 滿 1 秒才通知結算。點擊重開時可 cancelFoulReplay。
+     */
+    public playFoulReplay(coin: Node | null, onDone: () => void): void {
+        this.cancelFoulReplay();
+        this._foulActive = true;
+        this._foulDone = onDone;
+        const gl = this.node.parent?.getComponent(GameLogic) ?? this.getComponent(GameLogic);
+        gl?.setGameSpeed(0.3);
+        this.scheduleOnce(this._endFoulSlow, 0.3);
+        this._flashFoulCoin(coin);
+        this.scheduleOnce(this._finishFoulReplay, 1);
+    }
+
+    public cancelFoulReplay(): void {
+        if (!this._foulActive) return;
+        this.unschedule(this._endFoulSlow);
+        this.unschedule(this._finishFoulReplay);
+        this._foulActive = false;
+        this._foulDone = null;
+        const gl = this.node.parent?.getComponent(GameLogic) ?? this.getComponent(GameLogic);
+        gl?.restoreSpeed();
+    }
+
+    private _endFoulSlow = (): void => {
+        const gl = this.node.parent?.getComponent(GameLogic) ?? this.getComponent(GameLogic);
+        gl?.restoreSpeed();
+    };
+
+    private _finishFoulReplay = (): void => {
+        this._foulActive = false;
+        const done = this._foulDone;
+        this._foulDone = null;
+        done?.();
+    };
+
+    private _flashFoulCoin(coin: Node | null): void {
+        const sprite = coin?.isValid ? CoinController.getCoinSprite(coin) : null;
+        if (!sprite) return;
+        const base = sprite.color.clone();
+        tween(sprite)
+            .to(0.12, { color: new Color(255, 30, 30, 255) })
+            .to(0.12, { color: new Color(255, 255, 255, 255) })
+            .union()
+            .repeat(3)
+            .call(() => {
+                if (sprite.isValid) sprite.color = base;
+            })
+            .start();
+    }
+
     /** 停止追踪 */
     public stopTracking(): void {
         this.isTrackingHitCoin = false;
@@ -424,6 +481,8 @@ export class HitEffectManager extends Component {
         defaultOrthoHeight: number,
         isSlowMotion: boolean,
     ): void {
+        this._clearShakeOffset(camNode);
+
         // ── 发射追踪 ──
         if (this.enableLaunchTracking && isSlowMotion && this._activeShotCoin?.isValid) {
             this._trackTarget(dt, camNode, this._activeShotCoin.position, this.cameraZoomInDuration);
@@ -457,23 +516,29 @@ export class HitEffectManager extends Component {
             this.isCameraAtRest = false;
         }
 
-        // ── 屏幕震动 ──
+        // ── 屏幕震动：加在這一幀的乾淨位置上，結束時偏移為 0 ──
         if (this.isShaking) {
             const elapsed = Date.now() - this.shakeStartTime;
             const duration = this.shakeEndTime - this.shakeStartTime;
             if (elapsed < duration && duration > 0) {
                 const progress = elapsed / duration;
-                const amplitude = Math.sin(progress * Math.PI * 2) * 4;
+                const amplitude = Math.sin(progress * Math.PI * 2) * 4 * (1 - progress);
+                this._shakeOffset.set(this.shakeDir.x * amplitude, this.shakeDir.y * amplitude);
                 const pos = camNode.position;
-                camNode.setPosition(
-                    pos.x + this.shakeDir.x * amplitude,
-                    pos.y + this.shakeDir.y * amplitude,
-                    pos.z,
-                );
+                camNode.setPosition(pos.x + this._shakeOffset.x, pos.y + this._shakeOffset.y, pos.z);
             } else {
                 this.isShaking = false;
+                this._shakeOffset.set(0, 0);
             }
         }
+    }
+
+    /** 追蹤和回位都看不含震動的位置。 */
+    private _clearShakeOffset(camNode: Node): void {
+        if (this._shakeOffset.x === 0 && this._shakeOffset.y === 0) return;
+        const pos = camNode.position;
+        camNode.setPosition(pos.x - this._shakeOffset.x, pos.y - this._shakeOffset.y, pos.z);
+        this._shakeOffset.set(0, 0);
     }
 
     // ══════════════════════════════════════════

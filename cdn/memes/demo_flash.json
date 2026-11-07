@@ -1,0 +1,13 @@
+{
+  "id": "demo_flash",
+  "behavior": "FlashStepBehavior",
+  "behaviors": ["FlashStepBehavior"],
+  "radius": 32,
+  "textures": {
+    "default": "textures/demo_flash.png",
+    "idle": "textures/demo_flash.png",
+    "aim": "textures/demo_flash.png",
+    "shot": "textures/demo_flash.png",
+    "hitted": "textures/demo_flash.png"
+  }
+}

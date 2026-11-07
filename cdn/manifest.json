@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "baseUrl": "",
+  "memeConfig": "memes/index.json",
+  "levelConfig": "levels/demo_behavior.json",
+  "items": [
+    {
+      "filename": "memes/index.json",
+      "hash": "meme-index-v1",
+      "kind": "meme"
+    },
+    {
+      "filename": "memes/demo_freeze.json",
+      "hash": "meme-freeze-v1",
+      "kind": "meme"
+    },
+    {
+      "filename": "memes/demo_flash.json",
+      "hash": "meme-flash-v1",
+      "kind": "meme"
+    },
+    {
+      "filename": "levels/demo_behavior.json",
+      "hash": "level-demo-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "textures/demo_freeze.png",
+      "hash": "tex-freeze-v1",
+      "kind": "texture"
+    },
+    {
+      "filename": "textures/demo_flash.png",
+      "hash": "tex-flash-v1",
+      "kind": "texture"
+    }
+  ]
+}

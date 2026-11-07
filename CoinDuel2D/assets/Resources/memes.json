@@ -1,0 +1,84 @@
+{
+    "coins": {
+        "1": {
+            "name": "肌肉狗",
+            "texture": "textures/coin_1.png",
+            "idleTexture": "textures/coin_1.png",
+            "aimTexture": "textures/coin_1_aim.png",
+            "shotTexture": "textures/coin_1_shot.png",
+            "hittedTexture": "textures/coin_1_hitted.png",
+            "shotSfx": "sounds/coin_1_shot.wav",
+            "hittedSfx": "sounds/coin_1_hitted.wav"
+        },
+        "2": {
+            "name": "悲伤蛙",
+            "texture": "textures/coin_2.png",
+            "idleTexture": "textures/coin_2.png",
+            "aimTexture": "textures/coin_2.png",
+            "shotTexture": "textures/coin_2.png",
+            "hittedTexture": "textures/coin_2.png",
+            "shotSfx": "sounds/coin_2_shot.wav",
+            "hittedSfx": "sounds/coin_2_hitted.wav"
+        },
+        "3": {
+            "name": "炸弹币",
+            "texture": "textures/coin/coin_bomb.png",
+            "idleTexture": "",
+            "aimTexture": "",
+            "shotTexture": "",
+            "hittedTexture": "",
+            "shotSfx": "",
+            "hittedSfx": ""
+        },
+        "4": {
+            "name": "冰冻币",
+            "texture": "textures/coin/coin_frezon.png",
+            "idleTexture": "",
+            "aimTexture": "",
+            "shotTexture": "",
+            "hittedTexture": "",
+            "shotSfx": "",
+            "hittedSfx": ""
+        },
+        "5": {
+            "name": "闪身步币",
+            "texture": "textures/coin/coin_flashstep.png",
+            "idleTexture": "",
+            "aimTexture": "",
+            "shotTexture": "",
+            "hittedTexture": "",
+            "shotSfx": "",
+            "hittedSfx": ""
+        },
+        "6": {
+            "name": "泥潭币",
+            "texture": "textures/coin/coin_mud.png",
+            "idleTexture": "",
+            "aimTexture": "",
+            "shotTexture": "",
+            "hittedTexture": "",
+            "shotSfx": "",
+            "hittedSfx": ""
+        },
+        "7": {
+            "name": "障碍物币",
+            "texture": "textures/coin/coin_blocker.png",
+            "idleTexture": "",
+            "aimTexture": "",
+            "shotTexture": "",
+            "hittedTexture": "",
+            "shotSfx": "",
+            "hittedSfx": ""
+        },
+        "8": {
+            "name": "磁铁",
+            "texture": "textures/coin/coin_magnet.png",
+            "idleTexture": "",
+            "aimTexture": "",
+            "shotTexture": "",
+            "hittedTexture": "",
+            "shotSfx": "",
+            "hittedSfx": ""
+        }
+    }
+}

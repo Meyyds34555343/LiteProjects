@@ -193,7 +193,7 @@
     "_priority": 0,
     "_fov": 45,
     "_fovAxis": 0,
-    "_orthoHeight": 404.45242369838417,
+    "_orthoHeight": 360,
     "_near": 0,
     "_far": 2000,
     "_color": {
@@ -372,7 +372,7 @@
   },
   {
     "__type__": "cc.Node",
-    "_name": "BtnHome",
+    "_name": "BtnBack",
     "_objFlags": 0,
     "__editorExtras__": {},
     "_parent": {
@@ -436,8 +436,8 @@
     "__prefab": null,
     "_contentSize": {
       "__type__": "cc.Size",
-      "width": 96,
-      "height": 96
+      "width": 80,
+      "height": 80
     },
     "_anchorPoint": {
       "__type__": "cc.Vec2",
@@ -562,8 +562,8 @@
     "_alignFlags": 33,
     "_target": null,
     "_left": 0,
-    "_right": 32,
-    "_top": 32,
+    "_right": 40,
+    "_top": 40,
     "_bottom": 0,
     "_horizontalCenter": 0,
     "_verticalCenter": 0,
@@ -727,7 +727,7 @@
     "_string": "开始匹配",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
-    "_actualFontSize": 42,
+    "_actualFontSize": 47.016666666666666,
     "_fontSize": 42,
     "_fontFamily": "Arial",
     "_lineHeight": 40,
@@ -1039,7 +1039,7 @@
     "_string": "创建房间",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
-    "_actualFontSize": 42,
+    "_actualFontSize": 47.016666666666666,
     "_fontSize": 42,
     "_fontFamily": "Arial",
     "_lineHeight": 40,
@@ -1351,7 +1351,7 @@
     "_string": "加入房间",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
-    "_actualFontSize": 42,
+    "_actualFontSize": 47.016666666666666,
     "_fontSize": 42,
     "_fontFamily": "Arial",
     "_lineHeight": 40,

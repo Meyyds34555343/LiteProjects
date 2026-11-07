@@ -4,9 +4,9 @@
     "height": 600,
     "wall": { "thickness": 64 },
     "coins": [
-        { "type": "coin", "class": 1, "x": -200, "y": 180 },
-        { "type": "coin", "class": 1, "x": 200, "y": 180 },
-        { "type": "coin", "class": 1, "x": 0, "y": -100 },
+        { "type": "coin", "class": 1, "canshot": true, "x": -200, "y": 180 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 200, "y": 180 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 0, "y": -100 },
         { "type": "block", "x": 0, "y": 60, "shape": "circle", "radius": 48 }
     ]
 }

@@ -4,17 +4,6 @@
     "dragIncreaseSfx": "sounds/coin_drag.wav",
     "dragDecreaseSfx": "sounds/coin_drag.wav",
     "dragReleaseSfx": "sounds/drag_release.wav",
-    "coins": {
-        "1": {
-            "texture": "textures/coin_1.png",
-            "idleTexture": "textures/coin_1.png",
-            "aimTexture": "textures/coin_1_aim.png",
-            "shotTexture": "textures/coin_1_shot.png",
-            "hittedTexture": "textures/coin_1_hitted.png",
-            "shotSfx": "sounds/coin_1_shot.wav",
-            "hittedSfx": "sounds/coin_1_hitted.wav"
-        }
-    },
     "gameLogic": {
         "coinRadius": 32,
         "speedThreshold": 0.05,
@@ -24,7 +13,7 @@
         "bombPushRadius": 512,
         "bombPushForce": 500000,
         "bombMudPushFactor": 0.333,
-        "aimLineFactor": 7,
+        "aimLineFactor": 2,
         "idleShowDelay": 5
     },
     "tableController": {

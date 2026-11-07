@@ -4,11 +4,11 @@
     "height": 600,
     "wall": { "thickness": 64 },
     "coins": [
-        { "type": "coin", "class": 1, "x": -200, "y": 200 },
-        { "type": "coin", "class": 1, "x": 200, "y": 200 },
-        { "type": "coin", "class": 1, "x": 0, "y": 200 },
-        { "type": "coin", "class": 1, "x": -150, "y": -80 },
-        { "type": "coin", "class": 1, "x": 150, "y": -80 },
+        { "type": "coin", "class": 1, "canshot": true, "x": -200, "y": 200 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 200, "y": 200 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 0, "y": 200 },
+        { "type": "coin", "class": 1, "canshot": true, "x": -150, "y": -80 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 150, "y": -80 },
         { "type": "block", "x": -80, "y": 60, "shape": "circle", "radius": 40 },
         { "type": "block", "x": 80, "y": 60, "shape": "circle", "radius": 40 },
         { "type": "block", "x": 0, "y": -160, "shape": "circle", "radius": 32 }
