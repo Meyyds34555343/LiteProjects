@@ -31,6 +31,9 @@ export interface CompileModOptions {
     variables?: ModVariableDef[];
     version?: number;
     level?: ModConfig['level'];
+    uiStrings?: Record<string, string>;
+    assetManifestUrl?: string;
+    boot?: ModConfig['boot'];
 }
 
 export interface CompileModResult {
@@ -75,6 +78,9 @@ export class ModCompiler {
             physics,
             variables,
             level: opts.level,
+            uiStrings: opts.uiStrings,
+            assetManifestUrl: opts.assetManifestUrl,
+            boot: opts.boot ?? { scene: 'game', autoPlay: true },
         };
 
         const modJson = JSON.stringify(mod);

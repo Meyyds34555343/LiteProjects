@@ -163,6 +163,14 @@ export interface ModLevelLayout {
     coins: Array<Record<string, unknown>>;
 }
 
+/** Optional boot hints for zero-touch web → Cocos ingest. */
+export interface ModBootHints {
+    /** Prefer loading the game scene (web builds). */
+    scene?: 'game' | 'main';
+    /** Auto-start after CDN sync (default true when share code present). */
+    autoPlay?: boolean;
+}
+
 /** Unified mod package — AssetSync / share-string payload. */
 export interface ModConfig {
     schemaVersion: 1;
@@ -181,6 +189,12 @@ export interface ModConfig {
     variables: ModVariableDef[];
     /** Optional Scratch-authored table layout (same shape as LevelData). */
     level?: ModLevelLayout;
+    /** Creator-authored HUD / win-lose copy (web-first). */
+    uiStrings?: Record<string, string>;
+    /** Per-mod CDN manifest override (else CdnConfig.DEFAULT). */
+    assetManifestUrl?: string;
+    /** Hands-free runtime hints. */
+    boot?: ModBootHints;
 }
 
 export const DEFAULT_PHYSICS: GlobalPhysicsRules = {

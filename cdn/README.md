@@ -2,6 +2,26 @@
 
 Drop assets here. The game pulls them through `AssetSyncManager` (hash-diff, cache locally).
 
+## Web-first 80/20 checklist
+
+| Work in Web Editor + `/cdn` (≈80%) | Work in Cocos Creator (≈20%) |
+|------------------------------------|------------------------------|
+| Level layouts, striker placement | New `BehaviorBase` subclasses |
+| Rule graphs (events / conditions / actions) | New opcodes in `GameLogicInterpreter` |
+| Win / lose rules, variables, tags | Core foul / settle / shot FSM |
+| Meme pick + skin URLs + table felt/wall | RigidBody2D, colliders, camera |
+| Physics knobs on ModConfig | Shaders, audio device quirks |
+| `uiStrings` win/lose copy | Prefabs / scenes / build / itch |
+| Bump CDN hashes & publish | Register new behaviors |
+
+**Litmus test:** Can a designer ship it by editing blocks/JSON and bumping a hash? → Web. Needs a new `.ts` file? → Cocos.
+
+### Creator loop (zero-touch)
+
+1. Open Blockly: https://glitchy-veil-4s4chq7.shipstatic.com/
+2. Design → **Copy COINMOD1** (or **Open in Runtime**).
+3. Runtime auto-loads `?mod=` via `ModAutoBoot`, syncs this CDN, spawns Scratch level — no Creator rebuild.
+
 ## Folder rules
 
 ```text
@@ -26,23 +46,17 @@ cdn/
 4. Publish this folder (GitHub → jsDelivr, or re-deploy shipstatic).
 5. Next launch: client downloads only changed hashes.
 
-### Current free host (shipstatic)
+### Current default host (jsDelivr → GitHub fork)
 
 Game default (`CdnConfig.DEFAULT_CDN_MANIFEST_URL`):
 
 ```text
-https://fractal-flow-va9gm22.shipstatic.com/manifest.json
+https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/manifest.json
 ```
 
-Claim for longer life: https://my.shipstatic.com/claim/f8ad06672d8b3f42c74871bd56eed7b4
+After merging `behavior-scratch` → `main`, switch `@behavior-scratch` to `@main`.
 
-### Preferred long-term host
-
-Push this repo to GitHub, then set game `manifestUrl` to:
-
-```text
-https://cdn.jsdelivr.net/gh/<USER>/<REPO>@main/cdn/manifest.json
-```
+Legacy shipstatic (optional claim): https://fractal-flow-va9gm22.shipstatic.com/manifest.json
 
 ### Behavior as meme example (Phase 3)
 

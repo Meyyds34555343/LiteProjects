@@ -1,4 +1,4 @@
-import { _decorator, assetManager, AudioSource, Component, instantiate, Node, Prefab, Input, input, KeyCode, EventKeyboard, UITransform, CircleCollider2D, resources, SpriteFrame, AudioClip, Color, director, Label, sys } from 'cc';
+import { _decorator, assetManager, AudioSource, Component, instantiate, Node, Prefab, Input, input, KeyCode, EventKeyboard, UITransform, CircleCollider2D, resources, SpriteFrame, AudioClip, Color, director, Label } from 'cc';
 import { BombCoinMarker } from '../BombCoinMarker';
 import { I18n } from '../I18n';
 import { RoundManager } from '../RoundManager';
@@ -15,6 +15,8 @@ import { HitEffectManager } from '../HitEffectManager';
 import { Leaderboard } from '../Leaderboard';
 import { TutorialManager, TutorialStep } from '../TutorialManager';
 import { AssetSyncManager } from '../Meme/AssetSyncManager';
+import { ModAutoBoot } from '../Mod/ModAutoBoot';
+import { DEFAULT_CDN_MANIFEST_URL } from '../Meme/CdnConfig';
 
 const { ccclass, property } = _decorator;
 
@@ -124,30 +126,39 @@ export class GameScene extends Component {
                     this._applyGameConfig();
                 }
 
-                // 关卡选择 / Scratch COINMOD1 传入的配置
-                let levelData = LevelManager.getCurrent();
-                if (!levelData) {
-                    // Fallback: active Scratch mod in localStorage
-                    try {
-                        const raw = sys.localStorage?.getItem('CoinDuel:activeMod')
-                            ?? (typeof localStorage !== 'undefined' ? localStorage.getItem('CoinDuel:activeMod') : null);
-                        if (raw) {
-                            const mod = JSON.parse(raw);
-                            if (mod?.level && Array.isArray(mod.level.coins)) {
-                                LevelManager.setScratchLevel(mod.level);
-                                levelData = mod.level;
+                // Ensure AssetSync exists early for ModAutoBoot CDN sync
+                const sync = this.gameLogic.getComponent(AssetSyncManager)
+                    ?? this.gameLogic.addComponent(AssetSyncManager);
+                if (!sync.manifestUrl) {
+                    sync.manifestUrl = DEFAULT_CDN_MANIFEST_URL;
+                }
+
+                // Zero-touch: ?mod= / ?modUrl= / localStorage → Scratch level + CDN
+                ModAutoBoot.prepare(sync, (_bootErr, mod) => {
+                    // Scratch / ModConfig level always wins when present
+                    let levelData = LevelManager.getCurrent();
+                    if (!levelData && mod?.level && Array.isArray(mod.level.coins)) {
+                        LevelManager.setScratchLevel(mod.level as never);
+                        levelData = LevelManager.getCurrent();
+                    }
+                    if (!levelData) {
+                        try {
+                            const cached = ModAutoBoot.readCachedMod();
+                            if (cached?.level && Array.isArray(cached.level.coins)) {
+                                LevelManager.setScratchLevel(cached.level as never);
+                                levelData = LevelManager.getCurrent();
                             }
-                        }
-                    } catch { /* ignore */ }
-                }
-                if (levelData) {
-                    this._levelFiles = LevelManager.getLevelFiles();
-                    this._levelIndex = LevelManager.getLevelIndex();
-                    this._initFromLevel(levelData);
-                } else {
-                    LevelManager.clear();
-                    this.startNewRound();
-                }
+                        } catch { /* ignore */ }
+                    }
+                    if (levelData) {
+                        this._levelFiles = LevelManager.getLevelFiles();
+                        this._levelIndex = LevelManager.getLevelIndex();
+                        this._initFromLevel(levelData);
+                    } else {
+                        LevelManager.clear();
+                        this.startNewRound();
+                    }
+                });
             });
         });
 

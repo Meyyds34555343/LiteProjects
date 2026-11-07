@@ -447,20 +447,26 @@ export class GameLogicInterpreter {
     private _endWin(reason: string): void {
         if (this._ended || !this._host) return;
         this._ended = true;
-        this._spawnWorldText('WIN!', '#66BB6A', 0, 80);
+        const label = this._mod?.uiStrings?.win || 'WIN!';
+        this._spawnWorldText(label, '#66BB6A', 0, 80);
         this._host.declareWin(reason);
     }
 
     private _endLose(reason: string): void {
         if (this._ended || !this._host) return;
         this._ended = true;
-        this._spawnWorldText('LOSE', '#EF5350', 0, 80);
+        const label = this._mod?.uiStrings?.lose || 'LOSE';
+        this._spawnWorldText(label, '#EF5350', 0, 80);
         this._host.declareLose(reason);
     }
 
-    private _frictionToDamping(friction: number): number {
-        // Map designer-facing 0..1 friction into existing linearDamping scale.
+    /** Shared with web LivePreview — keep damping math identical. */
+    public static frictionToDamping(friction: number): number {
         return Math.max(0.05, friction * 6);
+    }
+
+    private _frictionToDamping(friction: number): number {
+        return GameLogicInterpreter.frictionToDamping(friction);
     }
 
     private _nodeSpeed(node: Node | null | undefined): number {

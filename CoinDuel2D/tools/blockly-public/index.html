@@ -82,17 +82,21 @@
 <body>
   <header>
     <h1>CoinDuel2D Blockly Mod Editor</h1>
-    <span class="hint">Level + Rules in Scratch → Export Share → paste in Cocos（导入 V）</span>
+    <span class="hint">Web-first: design here → Copy COINMOD1 → open runtime (no Cocos rebuild)</span>
     <div class="meta">
       <input id="modName" placeholder="Mod name" value="Blockly Mode" />
       <input id="modAuthor" placeholder="Author" value="" />
+      <input id="uiWin" placeholder="UI: win text" value="" title="uiStrings.win" />
+      <input id="uiLose" placeholder="UI: lose text" value="" title="uiStrings.lose" />
     </div>
     <div class="actions">
-      <button class="primary" id="btnExportShare">Export Share Code</button>
-      <button id="btnExportJson">Export Mod JSON</button>
-      <button id="btnExportLevel">Export Level JSON</button>
-      <button id="btnExportWs">Export Workspace</button>
-      <button class="ok" id="btnImportShare">Import Share / WS</button>
+      <button class="ok" id="btnCopyShare" title="Primary CTA">Copy COINMOD1</button>
+      <button class="primary" id="btnOpenRuntime">Open in Runtime</button>
+      <button id="btnExportShare">Export Share</button>
+      <button id="btnExportJson">Mod JSON</button>
+      <button id="btnExportLevel">Level JSON</button>
+      <button id="btnExportWs">Workspace</button>
+      <button id="btnImportShare">Import</button>
       <button id="btnCopyJson">Copy JSON</button>
       <button id="btnClear">Clear</button>
     </div>
@@ -100,9 +104,15 @@
   <div id="main">
     <div id="workspace"></div>
     <aside id="previewPane">
-      <div class="title">LIVE PREVIEW</div>
+      <div class="title">LIVE PREVIEW <span id="parityBadge" style="color:#9aa8bd;font-weight:500;letter-spacing:0;margin-left:8px;"></span></div>
       <div id="previewWrap"><canvas id="previewCanvas"></canvas></div>
-      <div id="previewStats">Edit blocks → table / physics update instantly</div>
+      <div style="display:flex;gap:6px;padding:6px 10px;border-top:1px solid var(--line);">
+        <button type="button" id="btnPrevPlay" style="flex:1;padding:5px;">Play</button>
+        <button type="button" id="btnPrevPause" style="flex:1;padding:5px;">Pause</button>
+        <button type="button" id="btnPrevReset" style="flex:1;padding:5px;">Reset</button>
+      </div>
+      <div id="memeCatalog" style="max-height:88px;overflow:auto;padding:6px 10px;font-size:0.72rem;color:var(--muted);border-top:1px solid var(--line);"></div>
+      <div id="previewStats">Edit blocks → table / physics update instantly. Drag striker to aim-shot.</div>
     </aside>
   </div>
   <footer>
@@ -112,6 +122,12 @@
   </footer>
 
   <script>
+    /* ── Web-first endpoints (match CdnConfig / shipstatic runtime) ── */
+    const CDN_MANIFEST = 'https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/manifest.json';
+    const RUNTIME_URL = 'https://turbo-surge-fq6t6f7.shipstatic.com/';
+    const WS_AUTOSAVE_KEY = 'CoinDuel:blocklyWorkspace';
+    let lastExportedHash = '';
+
     /* ── Inlined CoinDuel Blockly defs (mirrors BlocklyDefinitions.ts) ── */
     const H = { event: 45, condition: 195, action: 290, fx: 330, skin: 15, rules: 120, level: 210 };
     const TYPE_TO_OP = {
@@ -184,9 +200,11 @@
       { type: 'config_win_clear_all', message0: 'WIN rule: clear all coins', colour: H.rules },
       { type: 'config_win_score', message0: 'WIN rule: reach score %1', args0: [{ type: 'field_number', name: 'SCORE', value: 100 }], colour: H.rules },
       { type: 'config_win_survive', message0: 'WIN rule: survive %1 sec', args0: [{ type: 'field_number', name: 'SEC', value: 60 }], colour: H.rules },
+      { type: 'config_win_boss', message0: 'WIN rule: knock out boss tag %1', args0: [{ type: 'field_input', name: 'TAG', text: 'boss' }], colour: H.rules },
       { type: 'config_lose_striker_fall', message0: 'LOSE rule: striker falls off table', colour: 0 },
       { type: 'config_lose_shot_limit', message0: 'LOSE rule: shot limit %1', args0: [{ type: 'field_number', name: 'COUNT', value: 10 }], colour: 0 },
-      { type: 'config_physics', message0: 'physics friction %1 restitution %2 time-reverse %3', args0: [{ type: 'field_number', name: 'FRICTION', value: 0.35, min: 0, max: 1 }, { type: 'field_number', name: 'RESTITUTION', value: 1, min: 0, max: 2 }, { type: 'field_dropdown', name: 'TIME_REVERSE', options: [['ON','true'],['OFF','false']] }], colour: H.rules },
+      { type: 'config_lose_timer', message0: 'LOSE rule: timer expired %1 sec', args0: [{ type: 'field_number', name: 'SEC', value: 90 }], colour: 0 },
+      { type: 'config_physics', message0: 'physics friction %1 restitution %2 time-reverse %3 aim %4', args0: [{ type: 'field_number', name: 'FRICTION', value: 0.35, min: 0, max: 1 }, { type: 'field_number', name: 'RESTITUTION', value: 1, min: 0, max: 2 }, { type: 'field_dropdown', name: 'TIME_REVERSE', options: [['ON','true'],['OFF','false']] }, { type: 'field_number', name: 'AIM', value: 1, min: 0.1, max: 3 }], colour: H.rules },
       { type: 'level_setup', message0: 'level id %1 size %2 x %3 wall %4', args0: [{ type: 'field_number', name: 'ID', value: 1, min: 1 }, { type: 'field_number', name: 'WIDTH', value: 800, min: 200 }, { type: 'field_number', name: 'HEIGHT', value: 600, min: 200 }, { type: 'field_number', name: 'WALL', value: 64, min: 8 }], colour: H.level },
       { type: 'level_place', message0: 'place %1 at x %2 y %3 r %4 class %5 skin %6 url %7 meme %8 mudμ %9', args0: [
         { type: 'field_dropdown', name: 'KIND', options: [['出手币 striker','striker'],['目标币 target','target'],['击退 knockback','knockback'],['冰冻 freeze','freeze'],['闪身 flash','flash'],['炸弹 bomb','bomb'],['障碍 block','block'],['泥地 mud','mud']] },
@@ -208,7 +226,7 @@
         { kind: 'category', name: '🟣 Actions', colour: String(H.action), contents: ['apply_impulse','explode_radius','swap_positions','set_coin_position','change_friction','trigger_time_reverse','set_variable','change_variable','tag_coin','declare_win','declare_lose'].map((t) => ({ kind: 'block', type: t })) },
         { kind: 'category', name: '🔴 Juice FX', colour: String(H.fx), contents: ['play_meme_sound','spawn_world_text','show_coin_position','apply_squash_stretch','screen_shake'].map((t) => ({ kind: 'block', type: t })) },
         { kind: 'category', name: '🎨 Skins', colour: String(H.skin), contents: ['set_coin_skin','set_table_skin'].map((t) => ({ kind: 'block', type: t })) },
-        { kind: 'category', name: '⚙ Rules / Math', colour: String(H.rules), contents: ['config_win_clear_all','config_win_score','config_win_survive','config_lose_striker_fall','config_lose_shot_limit','config_physics','math_add','math_sub','math_random'].map((t) => ({ kind: 'block', type: t })) },
+        { kind: 'category', name: '⚙ Rules / Math', colour: String(H.rules), contents: ['config_win_clear_all','config_win_score','config_win_survive','config_win_boss','config_lose_striker_fall','config_lose_shot_limit','config_lose_timer','config_physics','math_add','math_sub','math_random'].map((t) => ({ kind: 'block', type: t })) },
       ],
     };
 
@@ -274,14 +292,16 @@
           if (top.type === 'config_win_clear_all') win.push({ type: 'CLEAR_ALL_COINS' });
           else if (top.type === 'config_win_score') win.push({ type: 'REACH_TARGET_SCORE', value: Number(top.getFieldValue('SCORE') || 100) });
           else if (top.type === 'config_win_survive') win.push({ type: 'SURVIVE_TIME_LIMIT', value: Number(top.getFieldValue('SEC') || 60) });
+          else if (top.type === 'config_win_boss') win.push({ type: 'KNOCK_OUT_BOSS_COIN', value: String(top.getFieldValue('TAG') || 'boss') });
           else if (top.type === 'config_lose_striker_fall') lose.push({ type: 'STRIKER_FALLS_OFF_TABLE' });
           else if (top.type === 'config_lose_shot_limit') lose.push({ type: 'SHOT_LIMIT', value: Number(top.getFieldValue('COUNT') || 10) });
+          else if (top.type === 'config_lose_timer') lose.push({ type: 'TIMER_EXPIRED', value: Number(top.getFieldValue('SEC') || 90) });
           else if (top.type === 'config_physics') {
             physics = {
               tableFriction: Number(top.getFieldValue('FRICTION') || 0.35),
               restitutionScale: Number(top.getFieldValue('RESTITUTION') || 1),
               enableTimeReversePenalty: String(top.getFieldValue('TIME_REVERSE')) !== 'false',
-              aimPowerScale: 1,
+              aimPowerScale: Number(top.getFieldValue('AIM') || 1),
             };
           }
           continue;
@@ -348,6 +368,12 @@
       if (!win.length) win.push({ type: 'CLEAR_ALL_COINS' });
       if (!lose.length) lose.push({ type: 'STRIKER_FALLS_OFF_TABLE' });
 
+      const uiStrings = {};
+      const winText = (document.getElementById('uiWin') && document.getElementById('uiWin').value || '').trim();
+      const loseText = (document.getElementById('uiLose') && document.getElementById('uiLose').value || '').trim();
+      if (winText) uiStrings.win = winText;
+      if (loseText) uiStrings.lose = loseText;
+
       const mod = {
         schemaVersion: 1,
         id: 'mod_' + Date.now().toString(36),
@@ -360,7 +386,10 @@
         variables: Array.from(varNames).map((name) => ({
           name, initial: name === 'ExplosionPower' ? 50 : 0,
         })),
+        assetManifestUrl: CDN_MANIFEST,
+        boot: { scene: 'game', autoPlay: true },
       };
+      if (Object.keys(uiStrings).length) mod.uiStrings = uiStrings;
       if (hasLevel) {
         mod.level = {
           id: levelDraft.id,
@@ -378,6 +407,22 @@
       const raw = JSON.stringify(mod);
       mod.hash = hashText(raw);
       return mod;
+    }
+
+    function validateMod(mod) {
+      const errs = [];
+      const coins = (mod.level && mod.level.coins) || [];
+      const hasStriker = coins.some(function (c) { return c.type === 'coin' && c.canshot !== false && !(c.behaviors && c.behaviors[0]); })
+        || coins.some(function (c) { return c.canshot === true; });
+      if (mod.level && coins.length && !hasStriker) errs.push('No striker (canshot coin) in level');
+      if (!mod.win || !mod.win.length) errs.push('No WIN rule');
+      const known = window.__cdnMemeIds;
+      if (known && known.length) {
+        coins.forEach(function (c) {
+          if (c.memeId && known.indexOf(String(c.memeId)) < 0) errs.push('Unknown memeId: ' + c.memeId);
+        });
+      }
+      return errs;
     }
 
     function toShare(mod) {
@@ -420,7 +465,102 @@
     const pctx = previewCanvas.getContext('2d');
     let liveMod = null;
     let liveTimer = null;
-    const t0 = performance.now();
+    let t0 = performance.now();
+    let simBodies = [];
+    let simPlaying = true;
+    let simDragging = false;
+    let simDragFrom = null;
+    let simDragTo = null;
+    let simView = { cx: 0, cy: 0, scale: 1 };
+    let memeAtlas = {};
+    window.__cdnMemeIds = [];
+
+    function frictionToDamping(friction) { return Math.max(0.05, friction * 6); }
+
+    function resetSimFromMod(mod) {
+      const m = extractMarkers(mod);
+      simBodies = m.coins.map(function (c) {
+        return {
+          x: c.x, y: c.y, vx: 0, vy: 0,
+          r: 32, kind: c.kind || 'target', label: c.label || '',
+          memeId: c.memeId, canshot: c.kind === 'striker'
+        };
+      });
+      simDragging = false; simDragFrom = null; simDragTo = null;
+    }
+
+    function screenToWorld(clientX, clientY) {
+      const rect = previewCanvas.getBoundingClientRect();
+      const sx = clientX - rect.left, sy = clientY - rect.top;
+      return { x: (sx - simView.cx) / simView.scale, y: -((sy - simView.cy) / simView.scale) };
+    }
+
+    previewCanvas.addEventListener('pointerdown', function (e) {
+      const w = screenToWorld(e.clientX, e.clientY);
+      const striker = simBodies.find(function (b) { return b.canshot || b.kind === 'striker'; });
+      if (!striker) return;
+      if (Math.hypot(w.x - striker.x, w.y - striker.y) > 28) return;
+      simDragging = true; simDragFrom = { x: striker.x, y: striker.y }; simDragTo = w;
+      try { previewCanvas.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    window.addEventListener('pointermove', function (e) {
+      if (!simDragging) return;
+      simDragTo = screenToWorld(e.clientX, e.clientY);
+    });
+    window.addEventListener('pointerup', function (e) {
+      if (!simDragging || !simDragFrom || !simDragTo) { simDragging = false; return; }
+      const striker = simBodies.find(function (b) { return b.canshot || b.kind === 'striker'; });
+      if (striker) {
+        const aim = (liveMod && liveMod.physics && liveMod.physics.aimPowerScale) || 1;
+        striker.vx += (simDragFrom.x - simDragTo.x) * 8 * aim;
+        striker.vy += (simDragFrom.y - simDragTo.y) * 8 * aim;
+        simPlaying = true;
+      }
+      simDragging = false; simDragFrom = null; simDragTo = null;
+    });
+
+    function stepSim(dt) {
+      if (!simPlaying || !liveMod) return;
+      const phys = liveMod.physics || {};
+      const damping = frictionToDamping(phys.tableFriction != null ? phys.tableFriction : 0.35);
+      const rest = phys.restitutionScale != null ? phys.restitutionScale : 1;
+      const m = extractMarkers(liveMod);
+      const hw = m.tableW / 2, hh = m.tableH / 2;
+      const wall = ((liveMod.level && liveMod.level.wall && liveMod.level.wall.thickness) || 64) * 0.5;
+      const decay = Math.max(0, 1 - damping * dt * 0.35);
+      for (const b of simBodies) {
+        if (b.kind === 'block' || b.kind === 'mud') continue;
+        b.vx *= decay; b.vy *= decay;
+        b.x += b.vx * dt; b.y += b.vy * dt;
+        const rr = 14;
+        const minX = -hw + wall + rr, maxX = hw - wall - rr;
+        const minY = -hh + wall + rr, maxY = hh - wall - rr;
+        if (b.x < minX) { b.x = minX; b.vx = Math.abs(b.vx) * rest; }
+        if (b.x > maxX) { b.x = maxX; b.vx = -Math.abs(b.vx) * rest; }
+        if (b.y < minY) { b.y = minY; b.vy = Math.abs(b.vy) * rest; }
+        if (b.y > maxY) { b.y = maxY; b.vy = -Math.abs(b.vy) * rest; }
+      }
+      for (let i = 0; i < simBodies.length; i++) {
+        for (let j = i + 1; j < simBodies.length; j++) {
+          const a = simBodies[i], b = simBodies[j];
+          if (a.kind === 'mud' || b.kind === 'mud') continue;
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const dist = Math.hypot(dx, dy) || 0.0001;
+          const minD = 28;
+          if (dist >= minD) continue;
+          const nx = dx / dist, ny = dy / dist, overlap = minD - dist;
+          const aStatic = a.kind === 'block', bStatic = b.kind === 'block';
+          if (!aStatic && !bStatic) { a.x -= nx * overlap * 0.5; a.y -= ny * overlap * 0.5; b.x += nx * overlap * 0.5; b.y += ny * overlap * 0.5; }
+          else if (!aStatic) { a.x -= nx * overlap; a.y -= ny * overlap; }
+          else if (!bStatic) { b.x += nx * overlap; b.y += ny * overlap; }
+          const vn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+          if (vn > 0) continue;
+          const jImp = -(1 + rest) * vn / ((aStatic ? 0 : 1) + (bStatic ? 0 : 1) || 1);
+          if (!aStatic) { a.vx -= jImp * nx; a.vy -= jImp * ny; }
+          if (!bStatic) { b.vx += jImp * nx; b.vy += jImp * ny; }
+        }
+      }
+    }
 
     function feltColor(mod) {
       let felt = (mod && mod.level && mod.level.table && mod.level.table.felt) || 'table_1';
@@ -446,7 +586,7 @@
             else if ((item.behaviors || [])[0]) { label = String(item.behaviors[0]).replace('Behavior',''); kind = label.toLowerCase(); }
             else { label = 'target'; kind = 'target'; }
           }
-          coins.push({ x: +item.x || 0, y: +item.y || 0, label: label, kind: kind });
+          coins.push({ x: +item.x || 0, y: +item.y || 0, label: label, kind: kind, memeId: item.memeId ? String(item.memeId) : undefined });
         }
       }
       for (const pipe of (mod && mod.pipelines) || []) {
@@ -532,34 +672,63 @@
         ctx.beginPath(); ctx.moveTo(imp.x, -imp.y);
         ctx.lineTo(imp.x + Math.cos(ang) * len, -imp.y + Math.sin(ang) * len); ctx.stroke();
       }
-      for (const c of markers.coins) {
-        ctx.beginPath(); ctx.arc(c.x, -c.y, 14, 0, Math.PI * 2);
-        ctx.fillStyle = c.label === 'striker' ? '#ffe082' : '#eceff1'; ctx.fill();
-        ctx.strokeStyle = '#263238'; ctx.lineWidth = 2; ctx.stroke();
+      const bodies = simBodies.length ? simBodies : markers.coins.map(function (c) {
+        return { x: c.x, y: c.y, kind: c.kind, label: c.label, memeId: c.memeId };
+      });
+      for (const c of bodies) {
+        const img = c.memeId && memeAtlas[c.memeId];
+        if (img) {
+          try { ctx.drawImage(img, c.x - 16, -c.y - 16, 32, 32); } catch (_) {}
+        } else {
+          ctx.beginPath(); ctx.arc(c.x, -c.y, 14, 0, Math.PI * 2);
+          ctx.fillStyle = (c.kind === 'striker' || c.label === 'striker') ? '#ffe082'
+            : c.kind === 'freeze' ? '#81d4fa' : c.kind === 'flash' ? '#aed581' : c.kind === 'bomb' ? '#ef5350' : '#eceff1';
+          ctx.fill();
+          ctx.strokeStyle = '#263238'; ctx.lineWidth = 2; ctx.stroke();
+        }
         if (c.label) { ctx.fillStyle = '#fffde7'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(c.label, c.x, -c.y - 20); }
+      }
+      if (simDragging && simDragFrom && simDragTo) {
+        ctx.strokeStyle = '#5ec8ff'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(simDragFrom.x, -simDragFrom.y); ctx.lineTo(simDragTo.x, -simDragTo.y); ctx.stroke();
       }
       ctx.restore();
 
+      simView = { cx: cx, cy: cy, scale: scale };
       ctx.fillStyle = '#5ec8ff'; ctx.font = 'bold 12px Segoe UI,sans-serif'; ctx.textAlign = 'left';
-      ctx.fillText('LIVE PREVIEW', 14, 22);
+      ctx.fillText(simPlaying ? 'LIVE PREVIEW' : 'PAUSED', 14, 22);
       if (liveMod && liveMod.name) { ctx.fillStyle = '#e8eef8'; ctx.font = '11px Segoe UI,sans-serif'; ctx.fillText(liveMod.name, 14, 38); }
+      const badge = document.getElementById('parityBadge');
+      if (badge && liveMod) {
+        const p = liveMod.physics || {};
+        badge.textContent = 'v' + liveMod.schemaVersion + ' · μ ' + Number(p.tableFriction != null ? p.tableFriction : 0.35).toFixed(2)
+          + '/' + Number(p.restitutionScale != null ? p.restitutionScale : 1).toFixed(2)
+          + ' · #' + String(liveMod.hash || '—').slice(0, 8)
+          + (lastExportedHash && liveMod.hash !== lastExportedHash ? ' · dirty' : '');
+      }
     }
 
     function updatePreviewStats(mod) {
       const p = (mod && mod.physics) || {};
       const n = (mod && mod.level && mod.level.coins && mod.level.coins.length) || 0;
       const size = mod && mod.level ? (mod.level.width + '×' + mod.level.height) : '—';
+      const errs = mod ? validateMod(mod) : [];
       previewStats.innerHTML =
         '<strong>level</strong> ' + size + ' · <strong>objects</strong> ' + n +
         '<br><strong>μ</strong> ' + (p.tableFriction != null ? Number(p.tableFriction).toFixed(2) : '0.35') +
+        ' · aim ' + (p.aimPowerScale != null ? Number(p.aimPowerScale).toFixed(2) : '1.00') +
         ' · <strong>pipelines</strong> ' + ((mod && mod.pipelines && mod.pipelines.length) || 0) +
-        ' · <strong>win</strong> ' + ((mod && mod.win && mod.win.map(function (w) { return w.type; }).join(', ')) || '—');
+        ' · <strong>win</strong> ' + ((mod && mod.win && mod.win.map(function (w) { return w.type; }).join(', ')) || '—') +
+        (errs.length ? '<br><span style="color:#ff8a8a">⚠ ' + errs.join('; ') + '</span>' : '');
     }
 
     function dispatchLive(mod) {
+      const prevHash = liveMod && liveMod.hash;
       liveMod = mod;
+      if (!simBodies.length || !prevHash || prevHash !== mod.hash) resetSimFromMod(mod);
       drawPreview();
       updatePreviewStats(mod);
+      try { localStorage.setItem(WS_AUTOSAVE_KEY, JSON.stringify(Blockly.serialization.workspaces.save(workspace))); } catch (_) {}
       const payload = { type: 'CoinDuel:modConfig', mod: mod, modJson: JSON.stringify(mod), hash: mod.hash || null, at: Date.now() };
       try {
         if (window.parent && window.parent !== window) window.parent.postMessage(payload, '*');
@@ -633,8 +802,102 @@
     window.addEventListener('resize', resize);
     new ResizeObserver(resize).observe(document.getElementById('workspace'));
     new ResizeObserver(resizePreview).observe(document.getElementById('previewWrap'));
-    requestAnimationFrame(function tick() { drawPreview(); requestAnimationFrame(tick); });
+    let lastTick = performance.now();
+    requestAnimationFrame(function tick(now) {
+      const dt = Math.min(0.033, (now - lastTick) / 1000 || 0.016);
+      lastTick = now;
+      stepSim(dt);
+      drawPreview();
+      requestAnimationFrame(tick);
+    });
     scheduleLive();
+
+    document.getElementById('btnPrevPlay').onclick = function () { simPlaying = true; };
+    document.getElementById('btnPrevPause').onclick = function () { simPlaying = false; };
+    document.getElementById('btnPrevReset').onclick = function () { resetSimFromMod(liveMod); simPlaying = true; };
+
+    function loadCdnCatalog() {
+      const el = document.getElementById('memeCatalog');
+      el.textContent = 'Loading CDN memes…';
+      fetch(CDN_MANIFEST).then(function (r) { return r.json(); }).then(function (man) {
+        const base = (man.baseUrl || CDN_MANIFEST.replace(/\/[^/]*$/, '/'));
+        const memeItem = (man.items || []).find(function (i) { return i.kind === 'meme' && String(i.filename).indexOf('index') >= 0; })
+          || (man.items || []).find(function (i) { return i.kind === 'meme'; });
+        const memeUrl = man.memeConfig ? (base + man.memeConfig) : (memeItem ? base + memeItem.filename : base + 'memes/index.json');
+        return fetch(memeUrl).then(function (r) { return r.json(); }).then(function (idx) {
+          const list = Array.isArray(idx) ? idx : (idx.memes || idx.items || []);
+          const ids = [];
+          el.innerHTML = '<strong style="color:#5ec8ff">CDN memes</strong> ';
+          list.forEach(function (m) {
+            const id = m.id || m.memeId || m.name;
+            if (!id) return;
+            ids.push(String(id));
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = id;
+            btn.style.cssText = 'margin:2px;padding:2px 6px;font-size:0.7rem;';
+            btn.onclick = function () {
+              const tops = workspace.getTopBlocks(true);
+              let target = null;
+              for (const t of tops) {
+                if (t.type === 'level_place' && t.getFieldValue('KIND') !== 'striker') { target = t; break; }
+              }
+              if (!target) {
+                target = workspace.newBlock('level_place');
+                target.initSvg(); target.render(); target.moveBy(420, 300);
+                target.setFieldValue('target', 'KIND');
+              }
+              target.setFieldValue(String(id), 'MEME');
+              scheduleLive();
+              setStatus('Applied memeId ' + id + ' to a place block.', 'ok');
+            };
+            el.appendChild(btn);
+            // warm atlas
+            const tex = m.textures && (m.textures.default || m.textures.idle);
+            if (tex) {
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              img.onload = function () { memeAtlas[String(id)] = img; };
+              img.src = tex.indexOf('http') === 0 ? tex : (base + tex);
+            }
+          });
+          window.__cdnMemeIds = ids;
+          if (!ids.length) el.textContent = 'CDN catalog empty — check manifest.';
+        });
+      }).catch(function () {
+        el.textContent = 'CDN unreachable (offline ok). Meme picker disabled.';
+      });
+    }
+    loadCdnCatalog();
+
+    // Deep link ?mod= / ?modUrl= + autosave restore
+    (function bootFromQuery() {
+      try {
+        const q = new URLSearchParams(location.search);
+        const modCode = q.get('mod');
+        if (modCode && modCode.indexOf('COINMOD1:') === 0) {
+          const mod = fromShare(decodeURIComponent(modCode));
+          if (mod) {
+            document.getElementById('io').value = JSON.stringify(mod, null, 2);
+            document.getElementById('modName').value = mod.name || 'Blockly Mode';
+            if (mod.uiStrings) {
+              if (mod.uiStrings.win) document.getElementById('uiWin').value = mod.uiStrings.win;
+              if (mod.uiStrings.lose) document.getElementById('uiLose').value = mod.uiStrings.lose;
+            }
+            rebuildWorkspaceFromMod(mod);
+            scheduleLive();
+            setStatus('Loaded mod from ?mod= deep link.', 'ok');
+            return;
+          }
+        }
+        const saved = localStorage.getItem(WS_AUTOSAVE_KEY);
+        if (saved) {
+          Blockly.serialization.workspaces.load(JSON.parse(saved), workspace);
+          scheduleLive();
+          setStatus('Restored autosaved workspace.', 'ok');
+        }
+      } catch (_) {}
+    })();
 
     function rebuildWorkspaceFromMod(mod) {
       workspace.clear();
@@ -645,21 +908,33 @@
         phys.setFieldValue(mod.physics.tableFriction != null ? mod.physics.tableFriction : 0.35, 'FRICTION');
         phys.setFieldValue(mod.physics.restitutionScale != null ? mod.physics.restitutionScale : 1, 'RESTITUTION');
         phys.setFieldValue(mod.physics.enableTimeReversePenalty === false ? 'false' : 'true', 'TIME_REVERSE');
+        if (phys.getField('AIM')) phys.setFieldValue(mod.physics.aimPowerScale != null ? mod.physics.aimPowerScale : 1, 'AIM');
+      }
+      if (mod.uiStrings) {
+        if (mod.uiStrings.win && document.getElementById('uiWin')) document.getElementById('uiWin').value = mod.uiStrings.win;
+        if (mod.uiStrings.lose && document.getElementById('uiLose')) document.getElementById('uiLose').value = mod.uiStrings.lose;
       }
       (mod.win || []).forEach(function (w, i) {
         var t = w.type === 'REACH_TARGET_SCORE' ? 'config_win_score'
-          : w.type === 'SURVIVE_TIME_LIMIT' ? 'config_win_survive' : 'config_win_clear_all';
+          : w.type === 'SURVIVE_TIME_LIMIT' ? 'config_win_survive'
+          : w.type === 'KNOCK_OUT_BOSS_COIN' ? 'config_win_boss' : 'config_win_clear_all';
         var b = workspace.newBlock(t);
         b.initSvg(); b.render(); b.moveBy(420, 100 + i * 50);
         if (t === 'config_win_score') b.setFieldValue(w.value || 100, 'SCORE');
         if (t === 'config_win_survive') b.setFieldValue(w.value || 60, 'SEC');
+        if (t === 'config_win_boss') b.setFieldValue(w.value || 'boss', 'TAG');
       });
       (mod.lose || []).forEach(function (l, i) {
-        var t = l.type === 'SHOT_LIMIT' ? 'config_lose_shot_limit' : 'config_lose_striker_fall';
+        var t = l.type === 'SHOT_LIMIT' ? 'config_lose_shot_limit'
+          : l.type === 'TIMER_EXPIRED' ? 'config_lose_timer' : 'config_lose_striker_fall';
         var b = workspace.newBlock(t);
         b.initSvg(); b.render(); b.moveBy(420, 260 + i * 50);
         if (t === 'config_lose_shot_limit') b.setFieldValue(l.value || 10, 'COUNT');
+        if (t === 'config_lose_timer') b.setFieldValue(l.value || 90, 'SEC');
       });
+      if (mod.physics && Blockly.Blocks['config_physics']) {
+        /* aim field set above when phys block created */
+      }
       if (mod.level) {
         var setup = workspace.newBlock('level_setup');
         setup.initSvg(); setup.render(); setup.moveBy(x, y);
@@ -740,18 +1015,41 @@
       });
     }
 
-    document.getElementById('btnExportShare').onclick = () => {
+    function exportShareCode(copyClipboard) {
       const mod = workspaceToMod(workspace);
+      const errs = validateMod(mod);
       let code = '';
       try {
         code = toShare(mod);
       } catch (e) {
         setStatus('Share encode failed (code too large?). Remove Base64 URLs from place blocks.', 'err');
-        return;
+        return null;
       }
       document.getElementById('io').value = code;
+      lastExportedHash = mod.hash || '';
       try { localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod)); } catch (_) {}
-      setStatus('Exported COINMOD1 (' + code.length + ' chars). Cocos: 粘贴 Scratch → 试玩 Game', 'ok');
+      const warn = errs.length ? ' ⚠ ' + errs.join('; ') : '';
+      if (copyClipboard) {
+        navigator.clipboard.writeText(code).then(function () {
+          setStatus('Copied COINMOD1 (' + code.length + ' chars).' + warn, errs.length ? 'err' : 'ok');
+        }).catch(function () {
+          setStatus('COINMOD1 in box — clipboard blocked.' + warn, 'err');
+        });
+      } else {
+        setStatus('Exported COINMOD1 (' + code.length + ' chars).' + warn, errs.length ? 'err' : 'ok');
+      }
+      return code;
+    }
+    document.getElementById('btnExportShare').onclick = function () { exportShareCode(false); };
+    document.getElementById('btnCopyShare').onclick = function () { exportShareCode(true); };
+    document.getElementById('btnOpenRuntime').onclick = function () {
+      const code = exportShareCode(true);
+      if (!code) return;
+      const url = RUNTIME_URL + (RUNTIME_URL.indexOf('?') >= 0 ? '&' : '?') + 'mod=' + encodeURIComponent(code);
+      if (code.length > 1800) {
+        setStatus('Share code long for URL — copied to clipboard; paste via runtime Load or shorten level skins.', 'err');
+      }
+      window.open(url, '_blank');
     };
     document.getElementById('btnExportJson').onclick = () => {
       const mod = workspaceToMod(workspace);
