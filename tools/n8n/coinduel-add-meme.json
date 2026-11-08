@@ -1,0 +1,231 @@
+{
+  "name": "CoinDuel — Add Meme Pic",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "Webhook from Blockly editor → commit PNG + meme JSON + index + manifest to GitHub CDN"
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "wh-001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "coinduel-add-meme",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "coinduel-add-meme",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*",
+          "rawBody": true
+        }
+      }
+    },
+    {
+      "id": "cfg-001",
+      "name": "Repo Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "owner",
+              "value": "Meyyds34555343",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "repo",
+              "value": "LiteProjects",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "branch",
+              "value": "behavior-scratch",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "webhookSecret",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "githubToken",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-001",
+      "name": "Parse + Commit CDN",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const wh = $('Webhook').first().json;\nconst cfg = $('Repo Config').first().json;\n\nfunction parseMaybe(v) {\n  if (v == null) return null;\n  if (typeof v === 'string') {\n    const s = v.trim();\n    if (!s) return null;\n    try { return JSON.parse(s); } catch (e) { return null; }\n  }\n  if (typeof v === 'object') return v;\n  return null;\n}\n\nfunction pickBody(root) {\n  const candidates = [\n    root,\n    root && root.body,\n    root && root.data,\n    root && root.json,\n    root && root.payload,\n    root && root.rawBody,\n  ];\n  for (let i = 0; i < candidates.length; i++) {\n    let cur = candidates[i];\n    if (typeof cur === 'string') cur = parseMaybe(cur);\n    if (!cur || typeof cur !== 'object') continue;\n    if (cur.memeId != null || cur.id != null || cur.imageBase64 != null || cur.image != null) {\n      return cur;\n    }\n    if (cur.body) {\n      let nested = cur.body;\n      if (typeof nested === 'string') nested = parseMaybe(nested);\n      if (nested && typeof nested === 'object' && (nested.memeId != null || nested.imageBase64 != null)) {\n        return nested;\n      }\n    }\n  }\n  return (parseMaybe(root && root.body) || {});\n}\n\nconst body = pickBody(wh) || {};\nconst headers = wh.headers || {};\n\nconst secret = String(cfg.webhookSecret || '').trim();\nif (secret) {\n  const got = String(headers['x-coinduel-secret'] || headers['X-Coinduel-Secret'] || body.secret || '');\n  if (got !== secret) {\n    return [{ json: { ok: false, error: 'Unauthorized (bad secret)', statusCode: 401 } }];\n  }\n}\n\nconst memeId = String(body.memeId || body.id || '')\n  .trim()\n  .toLowerCase()\n  .replace(/[^a-z0-9_\\-]/g, '_')\n  .replace(/_+/g, '_')\n  .replace(/^_|_$/g, '');\n\nif (!memeId || memeId.length > 64) {\n  const keys = body && typeof body === 'object' ? Object.keys(body).slice(0, 20).join(',') : String(typeof body);\n  return [{\n    json: {\n      ok: false,\n      statusCode: 400,\n      error: 'memeId required (English a-z 0-9 _ -). Example: demo_firstmeme. Got keys: ' + keys,\n    },\n  }];\n}\n\nlet imageBase64 = String(body.imageBase64 || body.image || '');\nif (imageBase64.indexOf('base64,') >= 0) imageBase64 = imageBase64.split('base64,').pop();\nimageBase64 = imageBase64.replace(/\\s/g, '');\nif (!imageBase64 || imageBase64.length < 32) {\n  return [{ json: { ok: false, error: 'imageBase64 required', statusCode: 400 } }];\n}\n\nconst mime = String(body.mime || 'image/png');\nconst ext = (mime.indexOf('jpeg') >= 0 || mime.indexOf('jpg') >= 0) ? 'jpg' : 'png';\nconst behavior = String(body.behavior || 'NoneBehavior').trim() || 'NoneBehavior';\nconst radius = Number(body.radius != null ? body.radius : 32) || 32;\n\nlet token = String(cfg.githubToken || '').trim();\nif (!token) {\n  try { token = String(($vars && $vars.GITHUB_PAT) || '').trim(); } catch (e) {}\n}\nif (!token) {\n  return [{\n    json: {\n      ok: false,\n      statusCode: 500,\n      error: 'No GitHub token. Repo Config → set githubToken to your PAT (Contents Read/Write).',\n    },\n  }];\n}\n\nconst owner = String(cfg.owner || 'Meyyds34555343');\nconst repo = String(cfg.repo || 'LiteProjects');\nconst branch = String(cfg.branch || 'behavior-scratch');\nconst texPath = 'cdn/textures/' + memeId + '.' + ext;\nconst memePath = 'cdn/memes/' + memeId + '.json';\nconst indexPath = 'cdn/memes/index.json';\nconst manifestPath = 'cdn/manifest.json';\nconst hashTag = 'n8n-' + memeId + '-' + Date.now().toString(36);\nconst texRel = 'textures/' + memeId + '.' + ext;\n\nconst memeJson = {\n  id: memeId,\n  behavior: behavior,\n  behaviors: [behavior],\n  radius: radius,\n  textures: {\n    default: texRel,\n    idle: texRel,\n    aim: texRel,\n    shot: texRel,\n    hitted: texRel,\n  },\n};\n\nasync function gh(method, path, putBody) {\n  const url = 'https://api.github.com/repos/' + owner + '/' + repo + path;\n  const opts = {\n    method: method,\n    url: url,\n    headers: {\n      Accept: 'application/vnd.github+json',\n      Authorization: 'Bearer ' + token,\n      'X-GitHub-Api-Version': '2022-11-28',\n      'User-Agent': 'CoinDuel-n8n-meme-pipeline',\n    },\n    json: true,\n  };\n  if (putBody != null) opts.body = putBody;\n  try {\n    return await this.helpers.httpRequest(opts);\n  } catch (e) {\n    const status = e.statusCode || e.httpCode || (e.response && e.response.statusCode);\n    if (method === 'GET' && (status === 404 || String(e.message || '').indexOf('404') >= 0)) return null;\n    throw new Error((e.message || String(e)) + ' [' + method + ' ' + path + ']');\n  }\n}\n\nasync function upsertFile(filePath, contentBase64, message) {\n  const encPath = filePath.split('/').map(encodeURIComponent).join('/');\n  const existing = await gh.call(this, 'GET', '/contents/' + encPath + '?ref=' + encodeURIComponent(branch));\n  const payload = {\n    message: message,\n    content: contentBase64,\n    branch: branch,\n  };\n  if (existing && existing.sha) payload.sha = existing.sha;\n  return gh.call(this, 'PUT', '/contents/' + encPath, payload);\n}\n\nfunction utf8ToBase64(str) {\n  return Buffer.from(str, 'utf8').toString('base64');\n}\n\ntry {\n  await upsertFile.call(this, texPath, imageBase64, 'n8n: add texture ' + memeId);\n  await upsertFile.call(this, memePath, utf8ToBase64(JSON.stringify(memeJson, null, 2) + '\\n'), 'n8n: add meme ' + memeId);\n\n  let indexObj = { memes: [] };\n  const indexFile = await gh.call(this, 'GET', '/contents/' + indexPath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(branch));\n  if (indexFile && indexFile.content) {\n    const raw = Buffer.from(String(indexFile.content).replace(/\\n/g, ''), 'base64').toString('utf8');\n    const parsed = JSON.parse(raw);\n    if (Array.isArray(parsed)) indexObj = { memes: parsed };\n    else indexObj = parsed && typeof parsed === 'object' ? parsed : { memes: [] };\n    if (!Array.isArray(indexObj.memes)) indexObj.memes = [];\n  }\n  const brief = {\n    id: memeId,\n    behavior: behavior,\n    behaviors: [behavior],\n    radius: radius,\n    textures: { default: texRel, idle: texRel },\n  };\n  const mi = indexObj.memes.findIndex(function (m) { return m && m.id === memeId; });\n  if (mi >= 0) indexObj.memes[mi] = brief;\n  else indexObj.memes.push(brief);\n  await upsertFile.call(this, indexPath, utf8ToBase64(JSON.stringify(indexObj, null, 2) + '\\n'), 'n8n: update meme index (' + memeId + ')');\n\n  let manifest = { version: 1, baseUrl: '', memeConfig: 'memes/index.json', items: [] };\n  const manFile = await gh.call(this, 'GET', '/contents/' + manifestPath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(branch));\n  if (manFile && manFile.content) {\n    const raw = Buffer.from(String(manFile.content).replace(/\\n/g, ''), 'base64').toString('utf8');\n    manifest = JSON.parse(raw);\n    if (!Array.isArray(manifest.items)) manifest.items = [];\n  }\n  function upsertItem(filename, kind) {\n    const i = manifest.items.findIndex(function (it) { return it && it.filename === filename; });\n    const row = { filename: filename, hash: hashTag, kind: kind };\n    if (i >= 0) manifest.items[i] = Object.assign({}, manifest.items[i], row);\n    else manifest.items.push(row);\n  }\n  upsertItem('memes/index.json', 'meme');\n  upsertItem('memes/' + memeId + '.json', 'meme');\n  upsertItem(texRel, 'texture');\n  manifest.version = Number(manifest.version || 0) + 1;\n  if (!manifest.memeConfig) manifest.memeConfig = 'memes/index.json';\n  await upsertFile.call(this, manifestPath, utf8ToBase64(JSON.stringify(manifest, null, 2) + '\\n'), 'n8n: bump CDN manifest for ' + memeId);\n\n  return [{\n    json: {\n      ok: true,\n      statusCode: 200,\n      memeId: memeId,\n      behavior: behavior,\n      paths: { texture: texPath, meme: memePath, index: indexPath, manifest: manifestPath },\n      branch: branch,\n      hash: hashTag,\n      cdnHint: 'https://cdn.jsdelivr.net/gh/' + owner + '/' + repo + '@' + branch + '/cdn/memes/' + memeId + '.json',\n    },\n  }];\n} catch (e) {\n  return [{\n    json: {\n      ok: false,\n      statusCode: 500,\n      error: e.message || String(e),\n    },\n  }];\n}\n"
+      }
+    },
+    {
+      "id": "if-001",
+      "name": "OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "resp-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        -80
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, memeId: $json.memeId, behavior: $json.behavior, paths: $json.paths, branch: $json.branch, hash: $json.hash, cdnHint: $json.cdnHint } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "resp-err",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: $json.error } }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode || 500 }}"
+        }
+      }
+    },
+    {
+      "id": "note-001",
+      "name": "Setup sticky",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -220
+      ],
+      "parameters": {
+        "content": "## Setup (fixes HTTP 500)\n1. **Repo Config** → paste PAT into `githubToken` (Contents R/W on LiteProjects)\n2. Optional Variable `GITHUB_PAT` (`$vars`) — `$env` is blocked on Cloud\n3. Activate → copy **Production** `/webhook/...` URL into editor\n4. POST: `{ memeId, behavior, imageBase64, mime }`",
+        "height": 200,
+        "width": 420
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Repo Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Repo Config": {
+      "main": [
+        [
+          {
+            "node": "Parse + Commit CDN",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse + Commit CDN": {
+      "main": [
+        [
+          {
+            "node": "OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OK?": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

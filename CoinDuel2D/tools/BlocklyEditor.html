@@ -97,6 +97,7 @@
       <button id="btnExportLevel">Level JSON</button>
       <button id="btnExportWs">Workspace</button>
       <button id="btnImportShare">Import</button>
+      <button id="btnLoadLevel1" title="Fetch cdn/levels/1.json into blocks">Load Level 1</button>
       <button id="btnCopyJson">Copy JSON</button>
       <button id="btnClear">Clear</button>
     </div>
@@ -1074,6 +1075,43 @@
       document.getElementById('io').value = 'COINWS1:' + compress(state);
       setStatus('Exported compressed workspace string (COINWS1).', 'ok');
     };
+    function levelJsonToMod(level) {
+      return {
+        schemaVersion: 1,
+        id: 'mod_level_' + (level.id || 1),
+        name: 'Level ' + (level.id || 1),
+        version: Date.now(),
+        graph: { blocks: [] },
+        pipelines: [],
+        win: [{ type: 'CLEAR_ALL_COINS' }],
+        lose: [{ type: 'STRIKER_FALLS_OFF_TABLE' }],
+        physics: { tableFriction: 0.35, restitutionScale: 1, enableTimeReversePenalty: true, aimPowerScale: 1 },
+        variables: [],
+        level: level,
+        assetManifestUrl: CDN_MANIFEST,
+        boot: { scene: 'game', autoPlay: true },
+      };
+    }
+
+    function isLevelJson(obj) {
+      return obj && Array.isArray(obj.coins) && (obj.width != null || obj.id != null)
+        && obj.schemaVersion == null && !Array.isArray(obj.pipelines);
+    }
+
+    function importModIntoEditor(mod, label) {
+      if (!mod || mod.schemaVersion !== 1) {
+        setStatus('Invalid mod.', 'err');
+        return;
+      }
+      try { localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod)); } catch (_) {}
+      document.getElementById('io').value = JSON.stringify(mod, null, 2);
+      document.getElementById('modName').value = mod.name || 'Blockly Mode';
+      rebuildWorkspaceFromMod(mod);
+      scheduleLive();
+      const n = (mod.level && mod.level.coins && mod.level.coins.length) || 0;
+      setStatus((label || 'Imported') + ' — ' + n + ' objects as Level blocks.', 'ok');
+    }
+
     document.getElementById('btnImportShare').onclick = () => {
       const raw = document.getElementById('io').value.trim();
       if (raw.startsWith('COINWS1:')) {
@@ -1089,22 +1127,42 @@
       if (raw.startsWith('COINMOD1:')) {
         const mod = fromShare(raw);
         if (!mod) { setStatus('Invalid COINMOD1 code.', 'err'); return; }
-        try { localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod)); } catch (_) {}
-        document.getElementById('io').value = JSON.stringify(mod, null, 2);
-        document.getElementById('modName').value = mod.name || 'Blockly Mode';
-        rebuildWorkspaceFromMod(mod);
-        setStatus('Imported COINMOD1 — level blocks rebuilt (' + ((mod.level && mod.level.coins && mod.level.coins.length) || 0) + ' objects). Rules stay in JSON if complex.', 'ok');
-        scheduleLive();
+        importModIntoEditor(mod, 'Imported COINMOD1');
         return;
       }
       try {
-        const mod = JSON.parse(raw);
-        if (mod.schemaVersion !== 1) throw new Error('bad schema');
-        localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod));
-        setStatus('Raw ModConfig JSON stored for runtime.', 'ok');
+        const data = JSON.parse(raw);
+        if (isLevelJson(data)) {
+          importModIntoEditor(levelJsonToMod(data), 'Imported Level JSON');
+          return;
+        }
+        if (data.schemaVersion === 1 && data.level) {
+          importModIntoEditor(data, 'Imported ModConfig');
+          return;
+        }
+        if (data.schemaVersion === 1) {
+          localStorage.setItem('CoinDuel:activeMod', JSON.stringify(data));
+          setStatus('ModConfig saved (no level to rebuild).', 'ok');
+          return;
+        }
+        throw new Error('unrecognized');
       } catch {
-        setStatus('Paste COINMOD1:, COINWS1:, or ModConfig JSON.', 'err');
+        setStatus('Paste Level JSON (1.json), COINMOD1:, COINWS1:, or ModConfig.', 'err');
       }
+    };
+
+    document.getElementById('btnLoadLevel1').onclick = function () {
+      const base = CDN_MANIFEST.replace(/\/[^/]*$/, '/');
+      const url = base + 'levels/1.json';
+      setStatus('Loading Level 1 from CDN…');
+      fetch(url).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (level) {
+        importModIntoEditor(levelJsonToMod(level), 'Loaded Level 1');
+      }).catch(function (e) {
+        setStatus('Load Level 1 failed: ' + e.message + ' — paste cdn/levels/1.json then Import.', 'err');
+      });
     };
     document.getElementById('btnClear').onclick = () => {
       workspace.clear();

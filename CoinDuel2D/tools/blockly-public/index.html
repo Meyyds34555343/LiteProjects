@@ -21,7 +21,7 @@
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
       font-family: "Segoe UI", "Trebuchet MS", sans-serif; }
-    body { display: grid; grid-template-rows: auto 1fr auto; }
+    body { display: grid; grid-template-rows: auto auto auto 1fr auto; }
     header {
       display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
       padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel);
@@ -77,12 +77,46 @@
       background: #0f131a; border: 1px solid var(--line); color: var(--text);
       border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 140px;
     }
+    #gitBar {
+      border-top: 1px solid var(--line); background: #171d28; padding: 8px 14px;
+      display: grid; gap: 8px;
+    }
+    #gitBar summary {
+      cursor: pointer; color: var(--accent); font-size: 0.82rem; font-weight: 650;
+      letter-spacing: 0.04em; list-style: none;
+    }
+    #gitBar summary::-webkit-details-marker { display: none; }
+    #gitBar .git-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    #gitBar input, #gitBar select {
+      background: #0f131a; border: 1px solid var(--line); color: var(--text);
+      border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 100px;
+    }
+    #gitBar input.git-token { min-width: 220px; flex: 1; }
+    #gitBar .git-hint { font-size: 0.72rem; color: var(--muted); line-height: 1.4; }
+    #gitBar a { color: var(--accent); }
+    #memeBar {
+      border-top: 1px solid var(--line); background: #171d28; padding: 8px 14px;
+      display: grid; gap: 8px;
+    }
+    #memeBar summary {
+      cursor: pointer; color: var(--accent); font-size: 0.82rem; font-weight: 650;
+      letter-spacing: 0.04em; list-style: none;
+    }
+    #memeBar summary::-webkit-details-marker { display: none; }
+    #memeBar .git-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    #memeBar input, #memeBar select {
+      background: #0f131a; border: 1px solid var(--line); color: var(--text);
+      border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 100px;
+    }
+    #memeBar input.n8n-url { min-width: 260px; flex: 1; }
+    #memeBar .git-hint { font-size: 0.72rem; color: var(--muted); line-height: 1.4; }
+    #memeBar a { color: var(--accent); }
   </style>
 </head>
 <body>
   <header>
     <h1>CoinDuel2D Blockly Mod Editor</h1>
-    <span class="hint">Web-first: design here → Copy COINMOD1 → open runtime (no Cocos rebuild)</span>
+    <span class="hint">Web-first: design here → Copy COINMOD1 / Git save → open runtime (no Cocos rebuild)</span>
     <div class="meta">
       <input id="modName" placeholder="Mod name" value="Blockly Mode" />
       <input id="modAuthor" placeholder="Author" value="" />
@@ -97,10 +131,59 @@
       <button id="btnExportLevel">Level JSON</button>
       <button id="btnExportWs">Workspace</button>
       <button id="btnImportShare">Import</button>
+      <button id="btnLoadLevel1" title="Fetch cdn/levels/1.json into blocks">Load Level 1</button>
       <button id="btnCopyJson">Copy JSON</button>
       <button id="btnClear">Clear</button>
+      <button id="btnGitToggle" title="GitHub version control" class="primary">Git</button>
+      <button id="btnMemeToggle" title="n8n meme pipeline" class="primary">Meme</button>
     </div>
   </header>
+  <details id="gitBar">
+    <summary>GitHub version control — save / load levels as commits on your fork</summary>
+    <div class="git-row">
+      <input id="gitOwner" placeholder="owner" value="Meyyds34555343" title="GitHub user/org" />
+      <input id="gitRepo" placeholder="repo" value="LiteProjects" title="Repository name" />
+      <input id="gitBranch" placeholder="branch" value="behavior-scratch" title="Branch" />
+      <input id="gitPath" placeholder="cdn/levels" value="cdn/levels" title="Folder path in repo" />
+      <input id="gitToken" class="git-token" type="password" placeholder="GitHub PAT (repo Contents: Read/Write)" autocomplete="off" />
+      <button type="button" id="btnGitSave">Save Level → Git</button>
+      <button type="button" id="btnGitList">List Levels</button>
+      <button type="button" id="btnGitLoad">Load Selected</button>
+      <button type="button" id="btnGitHistory">History</button>
+      <select id="gitFileList" title="Files in folder" style="min-width:140px"><option value="">(list first)</option></select>
+    </div>
+    <p class="git-hint">
+      Creates a real Git commit (e.g. <code>cdn/levels/2.json</code>). Token stays in this browser only.
+      Create a fine-grained PAT with Contents Read/Write:
+      <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">GitHub → Settings → PAT</a>.
+      After save, jsDelivr may lag ~1–5 min (or use <code>@commit</code> / purge).
+    </p>
+  </details>
+  <details id="memeBar">
+    <summary>n8n Add Meme — upload pic → Cloud webhook → GitHub CDN commit</summary>
+    <div class="git-row">
+      <input id="n8nWebhook" class="n8n-url" placeholder="n8n Production webhook URL" title="https://….app.n8n.cloud/webhook/coinduel-add-meme" />
+      <input id="n8nSecret" type="password" placeholder="Secret (optional)" autocomplete="off" title="X-Coinduel-Secret" />
+      <input id="memeIdInput" placeholder="memeId" value="" title="e.g. cool_cat" style="min-width:120px;" />
+      <select id="memeBehavior" title="behavior">
+        <option value="NoneBehavior">NoneBehavior</option>
+        <option value="FreezeBehavior">FreezeBehavior</option>
+        <option value="FlashStepBehavior">FlashStepBehavior</option>
+        <option value="BombBehavior">BombBehavior</option>
+        <option value="MudBehavior">MudBehavior</option>
+        <option value="MagnetBehavior">MagnetBehavior</option>
+        <option value="BlockerBehavior">BlockerBehavior</option>
+      </select>
+      <input id="memeFile" type="file" accept="image/png,image/jpeg,image/webp" title="Meme image" />
+      <button type="button" class="ok" id="btnAddMemeN8n">Add Meme → n8n</button>
+      <button type="button" class="primary" id="btnAddMemeGit" title="Uses Git bar PAT — bypasses n8n">Add Meme → Git</button>
+      <button type="button" id="btnRefreshMemes">Refresh catalog</button>
+    </div>
+    <p class="git-hint">
+      If n8n shows <code>Failed to fetch</code> (CORS), use <strong>Add Meme → Git</strong> instead: open <strong>Git</strong>, paste the same GitHub PAT, then upload here.
+      For n8n: Publish ON, paste full Production URL containing <code>/webhook/</code>, Repo Config <code>githubToken</code> set. jsDelivr lag ~1–5 min.
+    </p>
+  </details>
   <div id="main">
     <div id="workspace"></div>
     <aside id="previewPane">
@@ -126,6 +209,8 @@
     const CDN_MANIFEST = 'https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/manifest.json';
     const RUNTIME_URL = 'https://turbo-surge-fq6t6f7.shipstatic.com/';
     const WS_AUTOSAVE_KEY = 'CoinDuel:blocklyWorkspace';
+    const GIT_CFG_KEY = 'CoinDuel:gitConfig';
+    const N8N_CFG_KEY = 'CoinDuel:n8nConfig';
     let lastExportedHash = '';
 
     /* ── Inlined CoinDuel Blockly defs (mirrors BlocklyDefinitions.ts) ── */
@@ -1074,6 +1159,43 @@
       document.getElementById('io').value = 'COINWS1:' + compress(state);
       setStatus('Exported compressed workspace string (COINWS1).', 'ok');
     };
+    function levelJsonToMod(level) {
+      return {
+        schemaVersion: 1,
+        id: 'mod_level_' + (level.id || 1),
+        name: 'Level ' + (level.id || 1),
+        version: Date.now(),
+        graph: { blocks: [] },
+        pipelines: [],
+        win: [{ type: 'CLEAR_ALL_COINS' }],
+        lose: [{ type: 'STRIKER_FALLS_OFF_TABLE' }],
+        physics: { tableFriction: 0.35, restitutionScale: 1, enableTimeReversePenalty: true, aimPowerScale: 1 },
+        variables: [],
+        level: level,
+        assetManifestUrl: CDN_MANIFEST,
+        boot: { scene: 'game', autoPlay: true },
+      };
+    }
+
+    function isLevelJson(obj) {
+      return obj && Array.isArray(obj.coins) && (obj.width != null || obj.id != null)
+        && obj.schemaVersion == null && !Array.isArray(obj.pipelines);
+    }
+
+    function importModIntoEditor(mod, label) {
+      if (!mod || mod.schemaVersion !== 1) {
+        setStatus('Invalid mod.', 'err');
+        return;
+      }
+      try { localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod)); } catch (_) {}
+      document.getElementById('io').value = JSON.stringify(mod, null, 2);
+      document.getElementById('modName').value = mod.name || 'Blockly Mode';
+      rebuildWorkspaceFromMod(mod);
+      scheduleLive();
+      const n = (mod.level && mod.level.coins && mod.level.coins.length) || 0;
+      setStatus((label || 'Imported') + ' — ' + n + ' objects as Level blocks.', 'ok');
+    }
+
     document.getElementById('btnImportShare').onclick = () => {
       const raw = document.getElementById('io').value.trim();
       if (raw.startsWith('COINWS1:')) {
@@ -1089,26 +1211,492 @@
       if (raw.startsWith('COINMOD1:')) {
         const mod = fromShare(raw);
         if (!mod) { setStatus('Invalid COINMOD1 code.', 'err'); return; }
-        try { localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod)); } catch (_) {}
-        document.getElementById('io').value = JSON.stringify(mod, null, 2);
-        document.getElementById('modName').value = mod.name || 'Blockly Mode';
-        rebuildWorkspaceFromMod(mod);
-        setStatus('Imported COINMOD1 — level blocks rebuilt (' + ((mod.level && mod.level.coins && mod.level.coins.length) || 0) + ' objects). Rules stay in JSON if complex.', 'ok');
-        scheduleLive();
+        importModIntoEditor(mod, 'Imported COINMOD1');
         return;
       }
       try {
-        const mod = JSON.parse(raw);
-        if (mod.schemaVersion !== 1) throw new Error('bad schema');
-        localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod));
-        setStatus('Raw ModConfig JSON stored for runtime.', 'ok');
+        const data = JSON.parse(raw);
+        if (isLevelJson(data)) {
+          importModIntoEditor(levelJsonToMod(data), 'Imported Level JSON');
+          return;
+        }
+        if (data.schemaVersion === 1 && data.level) {
+          importModIntoEditor(data, 'Imported ModConfig');
+          return;
+        }
+        if (data.schemaVersion === 1) {
+          localStorage.setItem('CoinDuel:activeMod', JSON.stringify(data));
+          setStatus('ModConfig saved (no level to rebuild).', 'ok');
+          return;
+        }
+        throw new Error('unrecognized');
       } catch {
-        setStatus('Paste COINMOD1:, COINWS1:, or ModConfig JSON.', 'err');
+        setStatus('Paste Level JSON (1.json), COINMOD1:, COINWS1:, or ModConfig.', 'err');
       }
+    };
+
+    document.getElementById('btnLoadLevel1').onclick = function () {
+      const base = CDN_MANIFEST.replace(/\/[^/]*$/, '/');
+      const url = base + 'levels/1.json';
+      setStatus('Loading Level 1 from CDN…');
+      fetch(url).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (level) {
+        importModIntoEditor(levelJsonToMod(level), 'Loaded Level 1');
+      }).catch(function (e) {
+        setStatus('Load Level 1 failed: ' + e.message + ' — paste cdn/levels/1.json then Import.', 'err');
+      });
     };
     document.getElementById('btnClear').onclick = () => {
       workspace.clear();
       setStatus('Workspace cleared.');
+    };
+
+    /* ── GitHub Contents API (version control for levels) ── */
+    function utf8ToBase64(str) {
+      return btoa(unescape(encodeURIComponent(str)));
+    }
+    function base64ToUtf8(b64) {
+      return decodeURIComponent(escape(atob(b64.replace(/\n/g, ''))));
+    }
+    function readGitCfg() {
+      return {
+        owner: (document.getElementById('gitOwner').value || '').trim(),
+        repo: (document.getElementById('gitRepo').value || '').trim(),
+        branch: (document.getElementById('gitBranch').value || 'behavior-scratch').trim(),
+        path: (document.getElementById('gitPath').value || 'cdn/levels').trim().replace(/^\/+|\/+$/g, ''),
+        token: (document.getElementById('gitToken').value || '').trim(),
+      };
+    }
+    function persistGitCfg() {
+      const c = readGitCfg();
+      try {
+        localStorage.setItem(GIT_CFG_KEY, JSON.stringify({
+          owner: c.owner, repo: c.repo, branch: c.branch, path: c.path,
+          /* token stored locally so you don't re-paste every session — clear browser data to wipe */
+          token: c.token,
+        }));
+      } catch (_) {}
+    }
+    function restoreGitCfg() {
+      try {
+        const raw = localStorage.getItem(GIT_CFG_KEY);
+        if (!raw) return;
+        const c = JSON.parse(raw);
+        if (c.owner) document.getElementById('gitOwner').value = c.owner;
+        if (c.repo) document.getElementById('gitRepo').value = c.repo;
+        if (c.branch) document.getElementById('gitBranch').value = c.branch;
+        if (c.path) document.getElementById('gitPath').value = c.path;
+        if (c.token) document.getElementById('gitToken').value = c.token;
+      } catch (_) {}
+    }
+    restoreGitCfg();
+    ['gitOwner', 'gitRepo', 'gitBranch', 'gitPath', 'gitToken'].forEach(function (id) {
+      document.getElementById(id).addEventListener('change', persistGitCfg);
+    });
+    document.getElementById('btnGitToggle').onclick = function () {
+      const bar = document.getElementById('gitBar');
+      bar.open = !bar.open;
+      if (bar.open) bar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+
+    async function ghApi(path, opts) {
+      const c = readGitCfg();
+      if (!c.owner || !c.repo) throw new Error('Set owner + repo');
+      if (!c.token) throw new Error('Paste a GitHub PAT (Contents Read/Write)');
+      persistGitCfg();
+      const url = 'https://api.github.com' + path;
+      const headers = {
+        Accept: 'application/vnd.github+json',
+        Authorization: 'Bearer ' + c.token,
+        'X-GitHub-Api-Version': '2022-11-28',
+      };
+      if (opts && opts.body) headers['Content-Type'] = 'application/json';
+      const res = await fetch(url, {
+        method: (opts && opts.method) || 'GET',
+        headers: headers,
+        body: opts && opts.body ? JSON.stringify(opts.body) : undefined,
+      });
+      const text = await res.text();
+      let data = null;
+      try { data = text ? JSON.parse(text) : null; } catch (_) { data = { message: text }; }
+      if (!res.ok) {
+        const msg = (data && (data.message || data.error)) || ('HTTP ' + res.status);
+        throw new Error(msg);
+      }
+      return data;
+    }
+
+    function levelFileName(level) {
+      const id = (level && level.id != null) ? level.id : 1;
+      return String(id) + '.json';
+    }
+
+    document.getElementById('btnGitSave').onclick = async function () {
+      try {
+        const c = readGitCfg();
+        const mod = workspaceToMod(workspace);
+        const level = mod.level || { id: 1, width: 800, height: 600, wall: { thickness: 64 }, coins: [] };
+        const file = levelFileName(level);
+        const fullPath = c.path + '/' + file;
+        const bodyText = JSON.stringify(level, null, 4) + '\n';
+        setStatus('Saving ' + fullPath + ' to GitHub…');
+        let sha = null;
+        try {
+          const existing = await ghApi(
+            '/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo)
+            + '/contents/' + fullPath.split('/').map(encodeURIComponent).join('/')
+            + '?ref=' + encodeURIComponent(c.branch)
+          );
+          if (existing && existing.sha) sha = existing.sha;
+        } catch (_) { /* new file */ }
+        const name = (document.getElementById('modName').value || 'level').trim();
+        const payload = {
+          message: 'editor: save level ' + level.id + ' (' + name + ')',
+          content: utf8ToBase64(bodyText),
+          branch: c.branch,
+        };
+        if (sha) payload.sha = sha;
+        const result = await ghApi(
+          '/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo)
+          + '/contents/' + fullPath.split('/').map(encodeURIComponent).join('/'),
+          { method: 'PUT', body: payload }
+        );
+        const commit = result && result.commit && result.commit.sha
+          ? result.commit.sha.slice(0, 7) : 'ok';
+        document.getElementById('io').value = bodyText;
+        setStatus('Committed ' + fullPath + ' @ ' + commit + ' on ' + c.branch + '.', 'ok');
+        document.getElementById('btnGitList').click();
+      } catch (e) {
+        setStatus('Git save failed: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnGitList').onclick = async function () {
+      try {
+        const c = readGitCfg();
+        setStatus('Listing ' + c.path + '…');
+        const data = await ghApi(
+          '/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo)
+          + '/contents/' + c.path.split('/').map(encodeURIComponent).join('/')
+          + '?ref=' + encodeURIComponent(c.branch)
+        );
+        const sel = document.getElementById('gitFileList');
+        sel.innerHTML = '';
+        const files = (Array.isArray(data) ? data : []).filter(function (f) {
+          return f.type === 'file' && /\.json$/i.test(f.name);
+        });
+        if (!files.length) {
+          sel.innerHTML = '<option value="">(no .json files)</option>';
+          setStatus('No JSON levels in ' + c.path + '.', 'err');
+          return;
+        }
+        files.sort(function (a, b) {
+          return a.name.localeCompare(b.name, undefined, { numeric: true });
+        });
+        files.forEach(function (f) {
+          const opt = document.createElement('option');
+          opt.value = f.path || (c.path + '/' + f.name);
+          opt.textContent = f.name;
+          sel.appendChild(opt);
+        });
+        setStatus('Found ' + files.length + ' level file(s) on ' + c.branch + '.', 'ok');
+      } catch (e) {
+        setStatus('Git list failed: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnGitLoad').onclick = async function () {
+      try {
+        const c = readGitCfg();
+        const sel = document.getElementById('gitFileList');
+        const fullPath = (sel.value || '').trim();
+        if (!fullPath) {
+          setStatus('List levels first, then pick a file.', 'err');
+          return;
+        }
+        setStatus('Loading ' + fullPath + ' from GitHub…');
+        const data = await ghApi(
+          '/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo)
+          + '/contents/' + fullPath.split('/').map(encodeURIComponent).join('/')
+          + '?ref=' + encodeURIComponent(c.branch)
+        );
+        if (!data || !data.content) throw new Error('Empty file response');
+        const text = base64ToUtf8(data.content);
+        const parsed = JSON.parse(text);
+        if (isLevelJson(parsed)) {
+          importModIntoEditor(levelJsonToMod(parsed), 'Loaded from Git ' + fullPath);
+        } else if (parsed.schemaVersion === 1) {
+          importModIntoEditor(parsed, 'Loaded ModConfig from Git ' + fullPath);
+        } else {
+          throw new Error('Not a level or ModConfig JSON');
+        }
+        document.getElementById('io').value = text;
+      } catch (e) {
+        setStatus('Git load failed: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnGitHistory').onclick = async function () {
+      try {
+        const c = readGitCfg();
+        const sel = document.getElementById('gitFileList');
+        let fullPath = (sel.value || '').trim();
+        if (!fullPath) {
+          const mod = workspaceToMod(workspace);
+          fullPath = c.path + '/' + levelFileName(mod.level);
+        }
+        setStatus('Fetching history for ' + fullPath + '…');
+        const commits = await ghApi(
+          '/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo)
+          + '/commits?sha=' + encodeURIComponent(c.branch)
+          + '&path=' + encodeURIComponent(fullPath)
+          + '&per_page=8'
+        );
+        if (!Array.isArray(commits) || !commits.length) {
+          setStatus('No commits found for ' + fullPath + '.', 'err');
+          return;
+        }
+        const lines = commits.map(function (cm) {
+          const sha = (cm.sha || '').slice(0, 7);
+          const msg = (cm.commit && cm.commit.message || '').split('\n')[0];
+          const when = cm.commit && cm.commit.author && cm.commit.author.date
+            ? cm.commit.author.date.slice(0, 10) : '';
+          return sha + '  ' + when + '  ' + msg;
+        });
+        document.getElementById('io').value = lines.join('\n');
+        setStatus('History: ' + commits.length + ' commit(s) for ' + fullPath + '.', 'ok');
+      } catch (e) {
+        setStatus('Git history failed: ' + e.message, 'err');
+      }
+    };
+
+    /* ── n8n Cloud: Add Meme pipeline ── */
+    function restoreN8nCfg() {
+      try {
+        const raw = localStorage.getItem(N8N_CFG_KEY);
+        if (!raw) return;
+        const c = JSON.parse(raw);
+        if (c.webhook) document.getElementById('n8nWebhook').value = c.webhook;
+        if (c.secret) document.getElementById('n8nSecret').value = c.secret;
+        if (c.memeId) document.getElementById('memeIdInput').value = c.memeId;
+        if (c.behavior) document.getElementById('memeBehavior').value = c.behavior;
+      } catch (_) {}
+    }
+    function persistN8nCfg() {
+      try {
+        localStorage.setItem(N8N_CFG_KEY, JSON.stringify({
+          webhook: (document.getElementById('n8nWebhook').value || '').trim(),
+          secret: (document.getElementById('n8nSecret').value || '').trim(),
+          memeId: (document.getElementById('memeIdInput').value || '').trim(),
+          behavior: document.getElementById('memeBehavior').value || 'NoneBehavior',
+        }));
+      } catch (_) {}
+    }
+    restoreN8nCfg();
+    ['n8nWebhook', 'n8nSecret', 'memeIdInput', 'memeBehavior'].forEach(function (id) {
+      document.getElementById(id).addEventListener('change', persistN8nCfg);
+    });
+    document.getElementById('btnMemeToggle').onclick = function () {
+      const bar = document.getElementById('memeBar');
+      bar.open = !bar.open;
+      if (bar.open) bar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+    document.getElementById('btnRefreshMemes').onclick = function () {
+      loadCdnCatalog();
+      setStatus('Refreshing CDN meme catalog…');
+    };
+
+    function applyMemeIdToPlace(id) {
+      const tops = workspace.getTopBlocks(true);
+      let target = null;
+      for (const t of tops) {
+        if (t.type === 'level_place' && t.getFieldValue('KIND') !== 'striker') { target = t; break; }
+      }
+      if (!target) {
+        target = workspace.newBlock('level_place');
+        target.initSvg(); target.render(); target.moveBy(420, 300);
+        target.setFieldValue('target', 'KIND');
+      }
+      target.setFieldValue(String(id), 'MEME');
+      scheduleLive();
+    }
+
+    function fileToBase64(file) {
+      return new Promise(function (resolve, reject) {
+        const reader = new FileReader();
+        reader.onload = function () {
+          const s = String(reader.result || '');
+          const i = s.indexOf('base64,');
+          resolve(i >= 0 ? s.slice(i + 7) : s);
+        };
+        reader.onerror = function () { reject(new Error('File read failed')); };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function readMemeForm() {
+      let memeId = (document.getElementById('memeIdInput').value || '').trim().toLowerCase();
+      memeId = memeId.replace(/[^a-z0-9_\-]/g, '_');
+      const behavior = document.getElementById('memeBehavior').value || 'NoneBehavior';
+      const fileInput = document.getElementById('memeFile');
+      const file = fileInput.files && fileInput.files[0];
+      return { memeId: memeId, behavior: behavior, file: file };
+    }
+
+    async function ghUpsertFile(c, fullPath, contentBase64, message) {
+      let sha = null;
+      try {
+        const existing = await ghApi(
+          '/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo)
+          + '/contents/' + fullPath.split('/').map(encodeURIComponent).join('/')
+          + '?ref=' + encodeURIComponent(c.branch)
+        );
+        if (existing && existing.sha) sha = existing.sha;
+      } catch (_) {}
+      const payload = { message: message, content: contentBase64, branch: c.branch };
+      if (sha) payload.sha = sha;
+      return ghApi(
+        '/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo)
+        + '/contents/' + fullPath.split('/').map(encodeURIComponent).join('/'),
+        { method: 'PUT', body: payload }
+      );
+    }
+
+    async function ghGetJsonFile(c, fullPath, fallback) {
+      try {
+        const data = await ghApi(
+          '/repos/' + encodeURIComponent(c.owner) + '/' + encodeURIComponent(c.repo)
+          + '/contents/' + fullPath.split('/').map(encodeURIComponent).join('/')
+          + '?ref=' + encodeURIComponent(c.branch)
+        );
+        if (!data || !data.content) return fallback;
+        return JSON.parse(base64ToUtf8(data.content));
+      } catch (_) {
+        return fallback;
+      }
+    }
+
+    async function commitMemeToGit(memeId, behavior, file) {
+      const c = readGitCfg();
+      if (!c.token) throw new Error('Open Git bar and paste GitHub PAT first');
+      if (!c.owner || !c.repo) throw new Error('Set Git owner/repo');
+      const ext = (file.type || '').indexOf('jpeg') >= 0 || (file.type || '').indexOf('jpg') >= 0 ? 'jpg' : 'png';
+      const imageBase64 = await fileToBase64(file);
+      const texPath = 'cdn/textures/' + memeId + '.' + ext;
+      const memePath = 'cdn/memes/' + memeId + '.json';
+      const indexPath = 'cdn/memes/index.json';
+      const manifestPath = 'cdn/manifest.json';
+      const hashTag = 'editor-' + memeId + '-' + Date.now().toString(36);
+      const texRel = 'textures/' + memeId + '.' + ext;
+      const memeJson = {
+        id: memeId,
+        behavior: behavior,
+        behaviors: [behavior],
+        radius: 32,
+        textures: { default: texRel, idle: texRel, aim: texRel, shot: texRel, hitted: texRel },
+      };
+      await ghUpsertFile(c, texPath, imageBase64, 'editor: add texture ' + memeId);
+      await ghUpsertFile(c, memePath, utf8ToBase64(JSON.stringify(memeJson, null, 2) + '\n'), 'editor: add meme ' + memeId);
+      let indexObj = await ghGetJsonFile(c, indexPath, { memes: [] });
+      if (Array.isArray(indexObj)) indexObj = { memes: indexObj };
+      if (!indexObj || typeof indexObj !== 'object') indexObj = { memes: [] };
+      if (!Array.isArray(indexObj.memes)) indexObj.memes = [];
+      const brief = {
+        id: memeId, behavior: behavior, behaviors: [behavior], radius: 32,
+        textures: { default: texRel, idle: texRel },
+      };
+      const mi = indexObj.memes.findIndex(function (m) { return m && m.id === memeId; });
+      if (mi >= 0) indexObj.memes[mi] = brief; else indexObj.memes.push(brief);
+      await ghUpsertFile(c, indexPath, utf8ToBase64(JSON.stringify(indexObj, null, 2) + '\n'), 'editor: update meme index (' + memeId + ')');
+      let manifest = await ghGetJsonFile(c, manifestPath, { version: 1, baseUrl: '', memeConfig: 'memes/index.json', items: [] });
+      if (!manifest.items) manifest.items = [];
+      function upsertItem(filename, kind) {
+        const i = manifest.items.findIndex(function (it) { return it && it.filename === filename; });
+        const row = { filename: filename, hash: hashTag, kind: kind };
+        if (i >= 0) manifest.items[i] = Object.assign({}, manifest.items[i], row);
+        else manifest.items.push(row);
+      }
+      upsertItem('memes/index.json', 'meme');
+      upsertItem('memes/' + memeId + '.json', 'meme');
+      upsertItem(texRel, 'texture');
+      manifest.version = Number(manifest.version || 0) + 1;
+      if (!manifest.memeConfig) manifest.memeConfig = 'memes/index.json';
+      await ghUpsertFile(c, manifestPath, utf8ToBase64(JSON.stringify(manifest, null, 2) + '\n'), 'editor: bump CDN manifest for ' + memeId);
+      return { ok: true, memeId: memeId, paths: { texture: texPath, meme: memePath }, branch: c.branch, hash: hashTag };
+    }
+
+    document.getElementById('btnAddMemeGit').onclick = async function () {
+      persistN8nCfg();
+      const form = readMemeForm();
+      if (!form.memeId) { setStatus('Enter memeId (e.g. cool_cat).', 'err'); return; }
+      if (!form.file) { setStatus('Choose a PNG/JPEG image.', 'err'); return; }
+      try {
+        setStatus('Committing meme "' + form.memeId + '" via GitHub…');
+        const data = await commitMemeToGit(form.memeId, form.behavior, form.file);
+        applyMemeIdToPlace(data.memeId);
+        document.getElementById('io').value = JSON.stringify(data, null, 2);
+        setStatus('Git committed meme "' + data.memeId + '" — Refresh catalog in ~1–5 min.', 'ok');
+        setTimeout(function () { loadCdnCatalog(); }, 2000);
+      } catch (e) {
+        setStatus('Git Add Meme failed: ' + e.message, 'err');
+      }
+    };
+
+    document.getElementById('btnAddMemeN8n').onclick = async function () {
+      persistN8nCfg();
+      const url = (document.getElementById('n8nWebhook').value || '').trim();
+      const secret = (document.getElementById('n8nSecret').value || '').trim();
+      const form = readMemeForm();
+      if (!url) { setStatus('Paste n8n Production webhook URL first (must include /webhook/).', 'err'); return; }
+      if (url.indexOf('/workflow/') >= 0) {
+        setStatus('That is the workflow page URL. Use Webhook → Production URL (/webhook/…).', 'err');
+        return;
+      }
+      if (url.indexOf('/webhook') < 0) {
+        setStatus('Webhook URL must contain /webhook/ — copy Production URL from the Webhook node.', 'err');
+        return;
+      }
+      if (!form.memeId) { setStatus('Enter memeId (e.g. cool_cat).', 'err'); return; }
+      if (!form.file) { setStatus('Choose a PNG/JPEG image.', 'err'); return; }
+      try {
+        setStatus('Uploading ' + form.memeId + ' via n8n…');
+        const imageBase64 = await fileToBase64(form.file);
+        /* form-urlencoded: n8n puts fields on body.*, no CORS preflight */
+        const formBody = new URLSearchParams();
+        formBody.set('memeId', form.memeId);
+        formBody.set('id', form.memeId);
+        formBody.set('behavior', form.behavior);
+        formBody.set('mime', form.file.type || 'image/png');
+        formBody.set('radius', '32');
+        formBody.set('imageBase64', imageBase64);
+        if (secret) formBody.set('secret', secret);
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+          body: formBody.toString(),
+        });
+        let data = null;
+        const rawText = await res.text();
+        try { data = JSON.parse(rawText); } catch (_) { data = null; }
+        if (!res.ok || (data && data.ok === false)) {
+          const err = (data && data.error) || rawText || ('HTTP ' + res.status);
+          throw new Error(err);
+        }
+        const id = (data && data.memeId) || form.memeId;
+        applyMemeIdToPlace(id);
+        document.getElementById('io').value = data ? JSON.stringify(data, null, 2) : rawText;
+        setStatus('n8n committed meme "' + id + '" — catalog may lag ~1–5 min on jsDelivr.', 'ok');
+        setTimeout(function () { loadCdnCatalog(); }, 2000);
+      } catch (e) {
+        const msg = e.message || String(e);
+        if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+          setStatus('n8n still unreachable — Publish ON? Full /webhook/ URL? Repo Config githubToken set? Then retry.', 'err');
+        } else {
+          setStatus('n8n Add Meme failed: ' + msg, 'err');
+        }
+      }
     };
   </script>
 </body>
