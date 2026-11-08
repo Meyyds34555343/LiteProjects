@@ -553,15 +553,17 @@ export class AssetSyncManager extends Component {
             done(cached);
             return;
         }
-        // Absolute remote / Base64 / preset / textures/* → DynamicAssetLoader
-        // Relative CDN path (when manifestUrl set) → join then load
+        // Absolute remote / Base64 → as-is.
+        // CDN files (…/textures/meme_01.png) must join manifest base — preview already uses full URLs.
+        // Local Resources presets stay bare stems like textures/coin_1 (no file extension).
         let ref = urlOrPath;
+        const isRemote = /^https?:\/\//i.test(urlOrPath) || /^data:/i.test(urlOrPath);
+        const looksLikeCdnFile = /\.(png|jpe?g|webp|gif)(\?|$)/i.test(urlOrPath);
         if (
             this.manifestUrl
-            && !/^https?:\/\//i.test(urlOrPath)
-            && !/^data:/i.test(urlOrPath)
+            && !isRemote
             && !PRESET_COIN_SKINS[urlOrPath]
-            && !urlOrPath.startsWith('textures/')
+            && (looksLikeCdnFile || !urlOrPath.startsWith('textures/'))
         ) {
             ref = this._join(this.manifestUrl, urlOrPath);
         }
