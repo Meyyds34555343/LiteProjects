@@ -3,7 +3,9 @@
     {
       "id": "demo_freeze",
       "behavior": "FreezeBehavior",
-      "behaviors": ["FreezeBehavior"],
+      "behaviors": [
+        "FreezeBehavior"
+      ],
       "radius": 32,
       "textures": {
         "default": "textures/demo_freeze.png",
@@ -13,11 +15,25 @@
     {
       "id": "demo_flash",
       "behavior": "FlashStepBehavior",
-      "behaviors": ["FlashStepBehavior"],
+      "behaviors": [
+        "FlashStepBehavior"
+      ],
       "radius": 32,
       "textures": {
         "default": "textures/demo_flash.png",
         "idle": "textures/demo_flash.png"
+      }
+    },
+    {
+      "id": "meme_01",
+      "behavior": "NoneBehavior",
+      "behaviors": [
+        "NoneBehavior"
+      ],
+      "radius": 32,
+      "textures": {
+        "default": "textures/meme_01.png",
+        "idle": "textures/meme_01.png"
       }
     }
   ]
