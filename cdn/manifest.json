@@ -1,12 +1,12 @@
 {
-  "version": 2,
+  "version": 3,
   "baseUrl": "",
   "memeConfig": "memes/index.json",
   "levelConfig": "levels/demo_behavior.json",
   "items": [
     {
       "filename": "memes/index.json",
-      "hash": "n8n-meme_01-mw7ipvko",
+      "hash": "n8n-meme_01-mw809tsx",
       "kind": "meme"
     },
     {
@@ -36,12 +36,12 @@
     },
     {
       "filename": "memes/meme_01.json",
-      "hash": "n8n-meme_01-mw7ipvko",
+      "hash": "n8n-meme_01-mw809tsx",
       "kind": "meme"
     },
     {
       "filename": "textures/meme_01.png",
-      "hash": "n8n-meme_01-mw7ipvko",
+      "hash": "n8n-meme_01-mw809tsx",
       "kind": "texture"
     }
   ]
