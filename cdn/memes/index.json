@@ -35,6 +35,18 @@
         "default": "textures/meme_01.png",
         "idle": "textures/meme_01.png"
       }
+    },
+    {
+      "id": "meme_02",
+      "behavior": "NoneBehavior",
+      "behaviors": [
+        "NoneBehavior"
+      ],
+      "radius": 32,
+      "textures": {
+        "default": "textures/meme_02.png",
+        "idle": "textures/meme_02.png"
+      }
     }
   ]
 }
