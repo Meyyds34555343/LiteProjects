@@ -1,0 +1,15 @@
+{
+  "id": "meme_02",
+  "behavior": "NoneBehavior",
+  "behaviors": [
+    "NoneBehavior"
+  ],
+  "radius": 32,
+  "textures": {
+    "default": "textures/meme_02.png",
+    "idle": "textures/meme_02.png",
+    "aim": "textures/meme_02.png",
+    "shot": "textures/meme_02.png",
+    "hitted": "textures/meme_02.png"
+  }
+}
