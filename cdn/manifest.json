@@ -1,12 +1,12 @@
 {
-  "version": 10,
+  "version": 11,
   "baseUrl": "",
   "memeConfig": "memes/index.json",
   "levelConfig": "levels/demo_behavior.json",
   "items": [
     {
       "filename": "memes/index.json",
-      "hash": "n8n-meme_02-mw82ehlb",
+      "hash": "n8n-doge-mw9ay000",
       "kind": "meme"
     },
     {
@@ -71,6 +71,16 @@
       "hash": "gdrive-meme_03-mw8z9k3d",
       "kind": "texture",
       "url": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/meme_03.png"
+    },
+    {
+      "filename": "memes/doge.json",
+      "hash": "n8n-doge-mw9ay000",
+      "kind": "meme"
+    },
+    {
+      "filename": "textures/doge.png",
+      "hash": "n8n-doge-mw9ay000",
+      "kind": "texture"
     }
   ]
 }
