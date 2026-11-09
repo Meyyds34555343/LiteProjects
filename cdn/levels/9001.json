@@ -1,0 +1,58 @@
+{
+    "id": 9001,
+    "width": 800,
+    "height": 600,
+    "wall": {
+        "thickness": 64
+    },
+    "coins": [
+        {
+            "type": "coin",
+            "class": 1,
+            "x": -160,
+            "y": 0,
+            "canshot": true,
+            "radius": 32
+        },
+        {
+            "type": "coin",
+            "class": 4,
+            "x": 120,
+            "y": 40,
+            "canshot": false,
+            "radius": 32,
+            "behavior": "FreezeBehavior",
+            "behaviors": [
+                "FreezeBehavior"
+            ],
+            "memeId": "demo_freeze",
+            "skin": {
+                "default": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png",
+                "idle": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png",
+                "aim": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png",
+                "shot": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png",
+                "hitted": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png"
+            }
+        },
+        {
+            "type": "coin",
+            "class": 5,
+            "x": 120,
+            "y": -80,
+            "canshot": false,
+            "radius": 32,
+            "behavior": "FlashStepBehavior",
+            "behaviors": [
+                "FlashStepBehavior"
+            ],
+            "memeId": "demo_flash",
+            "skin": {
+                "default": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png",
+                "idle": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png",
+                "aim": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png",
+                "shot": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png",
+                "hitted": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png"
+            }
+        }
+    ]
+}
