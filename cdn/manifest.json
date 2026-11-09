@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "baseUrl": "",
   "memeConfig": "memes/index.json",
   "levelConfig": "levels/demo_behavior.json",
@@ -53,6 +53,12 @@
       "filename": "textures/meme_02.png",
       "hash": "n8n-meme_02-mw82ehlb",
       "kind": "texture"
+    },
+    {
+      "filename": "textures/meme_04.png",
+      "hash": "gdrive-meme_04-mw8x407p",
+      "kind": "texture",
+      "url": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/meme_04.png"
     }
   ]
 }
