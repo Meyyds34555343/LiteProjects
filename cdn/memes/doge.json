@@ -1,0 +1,15 @@
+{
+  "id": "doge",
+  "behavior": "NoneBehavior",
+  "behaviors": [
+    "NoneBehavior"
+  ],
+  "radius": 32,
+  "textures": {
+    "default": "textures/doge.png",
+    "idle": "textures/doge.png",
+    "aim": "textures/doge.png",
+    "shot": "textures/doge.png",
+    "hitted": "textures/doge.png"
+  }
+}
