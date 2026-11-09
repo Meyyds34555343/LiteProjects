@@ -60,6 +60,13 @@ cdn/
 
 啟動時先讀 `asset-index.json` 還原 JSON 與二進位索引，離線可用；`DataProvider` 會優先讀 `serverdata/`，沒有才回退 `Resources/`。
 
+### 關卡目錄
+
+關卡選擇畫面現在優先使用本地資產庫：`items` 中 `kind: "level"` 的條目會按 manifest 順序成為關卡列表，關卡資料也從 `serverdata/` 讀取。
+本地資產庫沒有任何關卡時，才回退到內建 `Resources/levels.json`。
+
+> 若希望 20 個闖關關卡繼續可玩，需要把 `levels/1.json` … `levels/20.json` 也加入 `manifest.json` 的 `items`。
+
 ### Current default host (jsDelivr → GitHub fork)
 
 Game default (`CdnConfig.DEFAULT_CDN_MANIFEST_URL`):
