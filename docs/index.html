@@ -1320,20 +1320,41 @@
       setStatus((label || 'Imported') + ' — ' + n + ' objects as Level blocks.' + idHint, 'ok');
     }
 
+    /** raw.githubusercontent base — reflects editor commits within seconds (jsDelivr lags hours). */
+    function rawRepoBase() {
+      const c = readGitCfg();
+      const owner = c.owner || 'Meyyds34555343';
+      const repo = c.repo || 'LiteProjects';
+      const branch = c.branch || 'behavior-scratch';
+      return 'https://raw.githubusercontent.com/' + owner + '/' + repo + '/' + branch + '/';
+    }
+
+    /** Fetch a repo file from raw GitHub, falling back to jsDelivr if raw fails. */
+    function fetchRepoJson(relPath) {
+      const bust = '?t=' + Date.now().toString(36);
+      return fetch(rawRepoBase() + relPath + bust, { cache: 'no-store' })
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .catch(function () {
+          const base = CDN_MANIFEST.replace(/\/[^/]*$/, '/');
+          return fetch(base + relPath.replace(/^cdn\//, '') + bust).then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+          });
+        });
+    }
+
     function loadCdnLevel(id) {
       const n = Number(id);
       if (!Number.isFinite(n) || n < 1) {
         setStatus('Enter a valid level id.', 'err');
         return;
       }
-      const base = CDN_MANIFEST.replace(/\/[^/]*$/, '/');
       const filePath = 'cdn/levels/' + n + '.json';
-      const url = base + 'levels/' + n + '.json';
-      setStatus('Loading Level ' + n + ' from CDN…');
-      fetch(url).then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      }).then(function (level) {
+      setStatus('Loading Level ' + n + ' from GitHub…');
+      fetchRepoJson(filePath).then(function (level) {
         importModIntoEditor(levelJsonToMod(level, n), 'Loaded Level ' + n, filePath);
         const sel = document.getElementById('gitFileList');
         if (sel) {
