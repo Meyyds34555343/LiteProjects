@@ -176,7 +176,12 @@ export class TutorialManager extends Component {
      */
     public onCoinDragStart(coin: Node): boolean {
         if (!this._active) return true;
-        // 介绍步骤中不允许拖动
+
+        // 玩家直接去拖硬币时，跳过剩下的介绍气泡——
+        // 否则必须等每个 intro 的自动计时器跑完（4 个道具介绍 = 16 秒拖不动）。
+        this._skipIntroSteps();
+        if (!this._active) return false;
+
         const step = this._steps[this._currentStepIndex];
         if (!step || step.type !== 'drag') return false;
 
@@ -245,6 +250,10 @@ export class TutorialManager extends Component {
             this._restorePositions();
             this._foulCount++;
 
+            // 关键：出手时 GameLogic 已把所有硬币锁住（_setCoinsInteraction(false)）。
+            // 教程接管了本回合的结算，必须自己把操作权还回去，否则玩家再也拖不动任何硬币。
+            this.gameLogic?.waitingPlayerOperation();
+
             if (fallCount > 0) {
                 this._showHint('tutorial_foul_fall');
             } else if (hitCount >= 2) {
@@ -273,6 +282,28 @@ export class TutorialManager extends Component {
         } else {
             this._beginCurrentStep();
         }
+    }
+
+    /**
+     * 跳过所有连续的介绍步骤，直接进入第一个拖拽步骤。
+     * 玩家主动拖硬币时调用，避免被介绍气泡的自动计时器卡住。
+     */
+    private _skipIntroSteps(): void {
+        let moved = false;
+        while (this._currentStepIndex < this._steps.length
+            && this._steps[this._currentStepIndex].type === 'intro') {
+            this._currentStepIndex++;
+            moved = true;
+        }
+        if (!moved) return;
+
+        this.unscheduleAllCallbacks();
+        this._hideTargetIndicator();
+        if (this._currentStepIndex >= this._steps.length) {
+            this.skipTutorial();
+            return;
+        }
+        this._beginCurrentStep();
     }
 
     /** 开始当前步骤：根据类型展示介绍或拖拽 */

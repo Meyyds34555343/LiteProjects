@@ -35,6 +35,8 @@ interface CoinAppearanceAssets {
 export class CoinController extends Component {
     public static showArrow: boolean = false;
     private static _anyDragging: boolean = false;
+    /** 所有存活实例，用来判断静态拖拽锁是否真的还有人在用。 */
+    private static _live: Set<CoinController> = new Set();
     private static _lastWorldPos: Vec2 = new Vec2();
     /** 从 config.json 读取的 source_color */
     public static sourceColor: Color = Color.YELLOW;
@@ -362,11 +364,26 @@ export class CoinController extends Component {
 
         // 节点触摸事件（TOUCH_START/MOVE/END 在同一节点上，Touch 会 capture 后续事件到同一节点）
         this.node.on(Node.EventType.TOUCH_START, this._onPointerDown, this);
+        CoinController._live.add(this);
     }
 
     onDestroy() {
+        CoinController._live.delete(this);
+        // 若销毁时正在拖拽，释放全局锁，避免下一关所有硬币都拖不动
+        if (this._isDragging) {
+            this._isDragging = false;
+            CoinController._anyDragging = false;
+        }
         this.node.off(Node.EventType.TOUCH_START, this._onPointerDown, this);
         this._unregisterGlobalEvents();
+    }
+
+    /** 是否真的还有实例处在拖拽状态（用于校验静态锁）。 */
+    private static _anyInstanceDragging(): boolean {
+        for (const ctrl of CoinController._live) {
+            if (ctrl?.isValid && ctrl._isDragging) return true;
+        }
+        return false;
     }
 
     public showIndicator(show: boolean): void {
@@ -422,7 +439,16 @@ export class CoinController extends Component {
             return;
         }
         // 已经有硬币在拖拽中，不再响应（防止 Cocos Creator 在鼠标经过其他节点时误触 MOUSE_DOWN）
-        if (CoinController._anyDragging) return;
+        if (CoinController._anyDragging) {
+            // 防御：static 标志可能因窗口失焦 / 场景切换而永久残留，
+            // 导致所有硬币再也拖不动。没有任何实例在拖拽时自动恢复。
+            if (!CoinController._anyInstanceDragging()) {
+                console.warn('[CoinController] 清理残留的全局拖拽锁');
+                CoinController._anyDragging = false;
+            } else {
+                return;
+            }
+        }
 
         // 防御：如果之前拖拽未正常结束（如鼠标移出窗口），先清理
         if (this._isDragging) {

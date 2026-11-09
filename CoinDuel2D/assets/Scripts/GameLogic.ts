@@ -1192,7 +1192,8 @@ export class GameLogic extends Component {
         // ── 教程模式 ──
         if (this.tutorialManager?.isActive()) {
             if (!this.tutorialManager.onTurnSettled()) {
-                return; // 教程已处理失败（重置位置）
+                // 教程已处理失败：位置已还原，操作权由 TutorialManager 还回（waitingPlayerOperation）
+                return;
             }
             // 教程成功 → 播放打飞特效，跳过游戏结束/胜利判定
             this._awardSuccess();
