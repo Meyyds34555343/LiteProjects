@@ -1,17 +1,22 @@
 import { LevelData } from '../LevelData';
-import { DEFAULT_CDN_MANIFEST_URL, resolveCdnManifestUrl } from '../Meme/CdnConfig';
+import { githubRawUrl } from '../Meme/CdnConfig';
 import { NetworkManager } from '../NetworkManager';
 
 /**
  * CDN-first campaign level source.
  *
  * The web Blockly editor writes `cdn/levels/{id}.json` to GitHub. This loader
- * lets the running game pick those files up **without a Cocos rebuild**, so
- * "Save Level → Git" in the editor changes Stage Mode on the next refresh.
+ * lets the running game read those files back **without a Cocos rebuild**, so
+ * "Save Level → Git" changes Stage Mode on the next refresh.
+ *
+ * It reads from **raw.githubusercontent.com** rather than jsDelivr: jsDelivr
+ * caches branch URLs for hours and ignored purge requests in testing, while raw
+ * GitHub reflects a new commit within seconds and still sends
+ * `Access-Control-Allow-Origin: *`.
  *
  * Behaviour:
- *  - fetch `{manifestBase}/levels/{id}.json` with a cache-busting query
- *  - validate it looks like a level (numeric id + coins array)
+ *  - GET `raw/{branch}/cdn/levels/{id}.json` with a cache-busting query
+ *  - validate it is a level (numeric id + coins array, no schemaVersion)
  *  - on any failure (offline, 404, bad JSON) return null so callers fall back
  *    to the bundled `resources/levels/{id}.json`
  *
@@ -22,16 +27,7 @@ export class CdnLevelSource {
     /** Set false to force bundled levels only. */
     public static enabled: boolean = true;
 
-    /** Manifest URL whose folder holds `levels/*.json`. */
-    public static manifestUrl: string = DEFAULT_CDN_MANIFEST_URL;
-
     private static _cache = new Map<number, LevelData | null>();
-
-    /** Folder that contains `levels/`, always absolute. */
-    private static _base(): string {
-        const clean = resolveCdnManifestUrl(CdnLevelSource.manifestUrl);
-        return clean.replace(/\/[^/]*$/, '/');
-    }
 
     /**
      * Load level `id` from the CDN.
@@ -48,7 +44,8 @@ export class CdnLevelSource {
             return;
         }
 
-        const url = CdnLevelSource._base() + 'levels/' + id + '.json?t=' + Date.now();
+        const url = githubRawUrl('cdn/levels/' + id + '.json')
+            + '?t=' + Date.now().toString(36);
         NetworkManager.HttpGet(url, (code, body) => {
             const level = (code === 200 && body) ? CdnLevelSource._parse(body, id) : null;
             CdnLevelSource._cache.set(id, level);
@@ -64,6 +61,11 @@ export class CdnLevelSource {
     /** Drop memoised results (e.g. after the player pulls to refresh). */
     public static clearCache(): void {
         CdnLevelSource._cache.clear();
+    }
+
+    /** True when a CDN copy was found for this stage this session. */
+    public static isFromCdn(id: number): boolean {
+        return (CdnLevelSource._cache.get(id) ?? null) !== null;
     }
 
     private static _parse(body: string, expectedId: number): LevelData | null {

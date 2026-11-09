@@ -13,6 +13,23 @@ export const DEFAULT_CDN_MANIFEST_URL =
 export const JSDELIVR_MANIFEST_TEMPLATE =
     'https://cdn.jsdelivr.net/gh/<USER>/<REPO>@main/cdn/manifest.json';
 
+/** Repo + branch that holds `/cdn`. Level files are read from raw GitHub (instant updates). */
+export const CDN_REPO_OWNER = 'Meyyds34555343';
+export const CDN_REPO_NAME = 'LiteProjects';
+export const CDN_REPO_BRANCH = 'behavior-scratch';
+
+/**
+ * raw.githubusercontent base for a file in the repo.
+ * Unlike jsDelivr, this reflects a fresh commit immediately and sends
+ * `Access-Control-Allow-Origin: *`, so it is used for campaign levels where the
+ * editor writes and the game reads back within seconds.
+ */
+export function githubRawUrl(path: string): string {
+    const clean = String(path || '').replace(/^\/+/, '');
+    return 'https://raw.githubusercontent.com/' + CDN_REPO_OWNER + '/' + CDN_REPO_NAME
+        + '/' + CDN_REPO_BRANCH + '/' + clean;
+}
+
 /** True when url is a usable absolute http(s) remote (not localhost). */
 export function isRemoteHttpsManifestUrl(url: string | null | undefined): boolean {
     const u = (url || '').trim();

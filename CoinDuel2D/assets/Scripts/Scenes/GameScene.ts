@@ -122,8 +122,6 @@ export class GameScene extends Component {
                     ?? this.gameLogic.addComponent(AssetSyncManager);
                 // Absolute CDN only — never leave relative/empty for itch builds.
                 sync.manifestUrl = DEFAULT_CDN_MANIFEST_URL;
-                // Keep campaign CDN levels on the same base as the asset manifest.
-                CdnLevelSource.manifestUrl = sync.manifestUrl;
 
                 // CDN sync + optional Scratch from explicit ?mod= / ?modUrl= only
                 ModAutoBoot.prepare(sync, (_bootErr, mod) => {
