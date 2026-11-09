@@ -2,7 +2,8 @@ import { _decorator, Button, Component, director, Node, Label, resources, instan
 import { LevelManager } from '../LevelManager';
 import { SoundManager } from '../SoundManager';
 import { I18n } from '../I18n';
-import { UpdateManager } from '../UpdateManager';
+import { AssetSyncManager } from '../Meme/AssetSyncManager';
+import { DEFAULT_CDN_MANIFEST_URL } from '../Meme/CdnConfig';
 import { GameMode, GameScene } from './GameScene';
 const { ccclass, property } = _decorator;
 
@@ -48,23 +49,38 @@ export class MainScene extends Component {
 
             this.showMenus(false);
             this.labelUpdateMessage.string = I18n.t('main_check_update');
-            
-            // 游戏启动时从服务器更新关卡和配置（后台进行，不阻塞界面）
-            UpdateManager.checkUpdate(
-                (p) => {
-                    console.log(`[Update] 更新进度 ${(p * 100).toFixed(0)}%`);
-                    this.labelUpdateMessage.string = I18n.t('main_update_progress') + (p * 100).toFixed(0) + "%";
-                },
-                (err, errParams) => {
+
+            // 游戏启动时按 manifest.json 更新本地资产缓存（后台进行，不阻塞界面）
+            const sync = this.node.getComponent(AssetSyncManager)
+                ?? this.node.addComponent(AssetSyncManager);
+            if (!sync.manifestUrl) {
+                sync.manifestUrl = DEFAULT_CDN_MANIFEST_URL;
+            }
+            sync.sync(
+                (err) => {
                     if (err) {
-                        console.warn('[Update] 更新失败:', err, errParams);
-                        this.labelUpdateMessage.string = I18n.t('main_update_error') + I18n.t(err, errParams);
+                        const errKey = err === 'network'
+                            ? 'main_update_err_fetch_index'
+                            : err === 'manifest'
+                                ? 'main_update_err_parse_index'
+                                : err === 'busy'
+                                    ? 'main_update_err_running'
+                                    : 'main_update_err_download';
+                        console.warn('[Update] 更新失败:', err);
+                        this.labelUpdateMessage.string = I18n.t('main_update_error')
+                            + I18n.t(errKey, { code: 0, file: '' });
                     } else {
                         console.log('[Update] 更新完成');
                         this.labelUpdateMessage.string = I18n.t('main_update_complete');
                     }
                     this.showMenus(true);
-                }
+                },
+                (completed, total) => {
+                    const pct = total > 0 ? (completed / total) * 100 : 0;
+                    console.log(`[Update] 更新进度 ${pct.toFixed(0)}%`);
+                    this.labelUpdateMessage.string =
+                        I18n.t('main_update_progress') + pct.toFixed(0) + '%';
+                },
             );
 
         });

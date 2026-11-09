@@ -138,12 +138,6 @@ export interface LevelConfig {
     coins: LevelItemConfig[];
 }
 
-/** localStorage 裡快取的 hash 對照表。 */
-export interface CachedHashMap {
-    version: number;
-    hashes: Record<string, string>;
-}
-
 export function isCoinConfig(item: LevelItemConfig): item is CoinConfig {
     return !item.type || item.type === 'coin';
 }

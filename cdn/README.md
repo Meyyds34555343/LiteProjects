@@ -40,11 +40,25 @@ cdn/
 
 ## How to update (no rebuild / no paid CDN)
 
+`manifest.json` 的 `items` 是唯一資料來源；不要再依賴舊的 `memeConfig` / `levelConfig` 欄位（仍向後相容）。
+
 1. Replace or add files under `cdn/` (PNG, JSON, …).
 2. Change that file’s `hash` string in `manifest.json` (any new unique string).
 3. Bump `manifest.version`.
 4. Publish this folder (GitHub → jsDelivr, or re-deploy shipstatic).
-5. Next launch: client downloads only changed hashes.
+5. Next launch: client downloads only changed hashes, rewrites `serverdata/`, and removes files no longer listed.
+
+`kind` 可省略，會依副檔名／檔名推斷；支援 `meme | level | mod | json | texture | audio`。
+
+### 本地快取
+
+| 內容 | 位置 |
+|------|------|
+| 所有 JSON（含 `levels/*.json`、`config.json`） | `serverdata/<filename>` |
+| 貼圖 / 音效 | Web：IndexedDB；原生：`serverdata/<filename>` |
+| 快取索引（filename + hash + kind） | `serverdata/asset-index.json` |
+
+啟動時先讀 `asset-index.json` 還原 JSON 與二進位索引，離線可用；`DataProvider` 會優先讀 `serverdata/`，沒有才回退 `Resources/`。
 
 ### Current default host (jsDelivr → GitHub fork)
 
@@ -72,4 +86,4 @@ Play the demo level: set `LevelManager.setScratchLevel` from `levels/demo_behavi
 
 ## Offline
 
-Empty `manifestUrl` or failed fetch → local Resources / last disk cache.
+Empty `manifestUrl` or failed fetch → last `serverdata/` cache（JSON + IndexedDB 二進位）→ built-in `Resources/`。

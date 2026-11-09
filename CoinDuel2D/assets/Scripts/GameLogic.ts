@@ -13,7 +13,6 @@ import { BehaviorBase } from './Behaviors/BehaviorBase';
 import './Behaviors/FreezeBehavior';
 import './Behaviors/FlashStepBehavior';
 import './Behaviors/KnockbackBehavior';
-import { MemeLoader } from './Meme/MemeLoader';
 import { AssetSyncManager } from './Meme/AssetSyncManager';
 import { RunProgressionManager } from './RunProgressionManager';
 import { FailureAnalysisManager } from './FailureAnalysisManager';
@@ -452,7 +451,6 @@ export class GameLogic extends Component {
         this._ensureManagers();
         this._run?.beginRun(this.aimLineFactor);
         this._worldStats?.ensure(this.coinGroup, this.tableHeight);
-        MemeLoader.checkAndDownload();
         const sync = this.getComponent(AssetSyncManager) ?? this.addComponent(AssetSyncManager);
         sync.sync(() => {
             const remoteMod = sync.getMod();
@@ -694,23 +692,24 @@ export class GameLogic extends Component {
             console.warn('[Meme] 尚未設定 coinPrefab');
             return null;
         }
-        const meme = MemeLoader.getLoadedMemes().find((item) => item.id === memeId);
+        const sync = this.getComponent(AssetSyncManager) ?? AssetSyncManager.instance;
+        const meme = sync?.getMeme(memeId) ?? null;
         if (!meme) {
             console.warn('[Meme] 找不到，改用預設硬幣:', memeId);
             return this.spawnCoinAt(this.coinPrefab, x, y);
         }
+        const primary = meme.behaviors?.[0] || meme.behavior || undefined;
         const node = this.spawnCoinAt(
             this.coinPrefab,
             x,
             y,
-            meme.radius > 0 ? meme.radius : undefined,
-            meme.behavior || undefined,
+            meme.radius && meme.radius > 0 ? meme.radius : undefined,
+            primary,
         );
-        MemeLoader.applySprite(memeId, (frame) => {
-            if (!frame || !node.isValid) return;
-            const sprite = CoinController.getCoinSprite(node);
-            if (sprite) sprite.spriteFrame = frame;
-        });
+        for (const id of meme.behaviors ?? []) {
+            if (id && id !== primary) this.attachCoinBehavior(node, id);
+        }
+        sync?.applyMemeToCoin(node, memeId);
         return node;
     }
 

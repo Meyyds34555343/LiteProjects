@@ -1,9 +1,8 @@
 import { resources, JsonAsset } from 'cc';
 import { StorageManager } from './StorageManager';
-import { UpdateManager } from './UpdateManager';
 
 /**
- * 游戏数据读取器 — 优先读取在线更新的 serverdata 数据，失败时回退到内置 Resources
+ * 游戏数据读取器 — 优先读取 AssetSyncManager 写入的 serverdata 缓存，失败时回退到内置 Resources
  *
  * 路径规则与 resources.load 一致（可省略 .json）：
  * - 'levels'   → 关卡列表
@@ -18,7 +17,7 @@ export class DataProvider {
      */
     public static loadJson(path: string, cb: (err: Error | null, data: object | null) => void): void {
         const rel = path.endsWith('.json') ? path : path + '.json';
-        const filePath = UpdateManager.getDataPath(rel);
+        const filePath = StorageManager.getCachePath(rel);
         StorageManager.readJsonFile(filePath, (err, data) => {
             if (!err && data) {
                 cb(null, data);

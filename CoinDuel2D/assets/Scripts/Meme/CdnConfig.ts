@@ -1,5 +1,5 @@
 /**
- * Free remote CDN endpoints for AssetSync / MemeLoader.
+ * Free remote CDN endpoints for AssetSyncManager.
  *
  * DEFAULT: jsDelivr from this GitHub fork (behavior-scratch branch until merged to main).
  */
