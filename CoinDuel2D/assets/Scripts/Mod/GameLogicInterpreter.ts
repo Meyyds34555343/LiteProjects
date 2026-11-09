@@ -73,8 +73,16 @@ export class GameLogicInterpreter {
     private _started = false;
     private _ended = false;
     private _shotCount = 0;
+    /**
+     * True only when this pack owns the run (it shipped a level). In campaign /
+     * ladder we borrow pipelines from the cached pack but must ignore its win
+     * rules, otherwise a stale "clear all coins" auto-wins the stage.
+     */
+    private _scratchMode = false;
 
     public static getOrCreate(): GameLogicInterpreter {
+        // `new X()` on a Component never runs onLoad(), so anything that depends
+        // on lifecycle hooks must be initialised here.
         if (!this.instance) this.instance = new GameLogicInterpreter();
         return this.instance;
     }
@@ -102,6 +110,10 @@ export class GameLogicInterpreter {
         this._shotCount = 0;
         this._timerAcc = 0;
         if (!mod) return;
+        // A pack that declares a level is a single-stage Scratch run, so win
+        // conditions may end it. When we only borrow pipelines (campaign/ladder)
+        // we must NOT auto-declare win, otherwise the rules kill the stage early.
+        this._scratchMode = applyLevel && !!mod.level;
         for (const v of mod.variables) this._vars.set(v.name, v.initial);
         if (this._host) {
             this._host.setCoinDamping(this._frictionToDamping(mod.physics.tableFriction));
@@ -115,7 +127,8 @@ export class GameLogicInterpreter {
                 console.log('[Mod] Scratch level applied', mod.level.id, 'objects=', mod.level.coins?.length ?? 0);
             } catch { /* ignore */ }
         }
-        console.log('[Mod] loaded', mod.name, 'pipelines=', mod.pipelines.length, 'hash=', mod.hash);
+        console.log('[Mod] loaded', mod.name, 'pipelines=', mod.pipelines.length,
+            'scratch=', this._scratchMode, 'hash=', mod.hash);
     }
 
     public loadFromShareCode(code: string): boolean {
@@ -197,6 +210,9 @@ export class GameLogicInterpreter {
         coinsLeft: number;
     }): 'win' | 'lose' | null {
         if (!this._mod || this._ended || !this._host) return null;
+        // Campaign / ladder: pipelines may run, but their win-lose rules must not
+        // hijack the built-in stage flow.
+        if (!this._scratchMode) return null;
         for (const rule of this._mod.lose) {
             if (rule.type === LoseConditionType.STRIKER_FALLS_OFF_TABLE && opts.fallenStriker) {
                 this._endLose('striker_fall');
@@ -450,6 +466,13 @@ export class GameLogicInterpreter {
 
     private _endWin(reason: string): void {
         if (this._ended || !this._host) return;
+        // A mod's rules (including an explicit DECLARE_WIN block) must only end
+        // the run when the pack owns it. In campaign mode they would fight the
+        // real stage flow.
+        if (!this._scratchMode) {
+            console.log('[Mod] DECLARE_WIN ignored (campaign mode):', reason);
+            return;
+        }
         this._ended = true;
         const label = this._mod?.uiStrings?.win || 'WIN!';
         this._spawnWorldText(label, '#66BB6A', 0, 80);
@@ -458,6 +481,10 @@ export class GameLogicInterpreter {
 
     private _endLose(reason: string): void {
         if (this._ended || !this._host) return;
+        if (!this._scratchMode) {
+            console.log('[Mod] DECLARE_LOSE ignored (campaign mode):', reason);
+            return;
+        }
         this._ended = true;
         const label = this._mod?.uiStrings?.lose || 'LOSE';
         this._spawnWorldText(label, '#EF5350', 0, 80);

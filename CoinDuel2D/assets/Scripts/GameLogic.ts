@@ -401,6 +401,12 @@ export class GameLogic extends Component {
         this._bindModInterpreter();
     }
 
+    /**
+     * GameLogicInterpreter caches the host in onLoad(). When the component is
+     * added at runtime (addComponent after the scene loaded) Cocos does NOT call
+     * onLoad, so the host stays null and every behavior pipeline silently no-ops.
+     * Binding explicitly makes the interpreter work regardless of when it exists.
+     */
     private _bindModInterpreter(): void {
         this._mod = GameLogicInterpreter.getOrCreate();
         const host: ModRuntimeHost = {
