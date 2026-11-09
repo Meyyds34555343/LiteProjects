@@ -102,6 +102,11 @@ export class GameLogic extends Component {
     private get currentPhase(): GamePhase {
         return this._currentPhase;
     }
+
+    /** 供 CoinController 判断是否处于可操作阶段（教程自救用）。 */
+    public get isWaitingPlayer(): boolean {
+        return this._currentPhase === GamePhase.WAITING_PLAYER;
+    }
     public coinHitCount: number = 0;
     public coinFallCount: number = 0;
     private _activeShotCoin: Node | null = null;

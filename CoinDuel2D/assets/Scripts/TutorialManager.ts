@@ -76,6 +76,8 @@ export class TutorialManager extends Component {
     private _hitTargetThisTurn: boolean = false;
     private _foulCount: number = 0;
     private _wasLastStep: boolean = false;
+    /** 本次拖拽实际使用的硬币（可能不是教程指定的那枚）。 */
+    private _draggedCoin: Node | null = null;
 
     // ── 介绍步骤自动推进延迟 ──
     private _introAutoDelay: number = 4;
@@ -183,18 +185,21 @@ export class TutorialManager extends Component {
         if (!this._active) return false;
 
         const step = this._steps[this._currentStepIndex];
-        if (!step || step.type !== 'drag') return false;
-
-        if (coin !== step.sourceCoin) {
-            // 不是当前步骤指定的硬币 → 不响应
-            return false;
+        if (!step || step.type !== 'drag') {
+            // 走到这里说明还在介绍步骤且跳过失败——不要让玩家完全失去操作权。
+            console.log('[Tutorial] allow drag during', step ? step.type : 'no-step');
         }
 
-        // 正确的硬币 → 隐藏手势提示和目标指示器，允许拖动
+        // 关键：拖拽步骤一律允许上手（任何硬币），不再因为“拖错了硬币”而静默拒绝。
+        // 教程仍会在结算时用 targetCoin 判定成功/失败，所以教学效果不变，
+        // 但玩家永远不会遇到“怎么点都没反应”的情况。
+        this._draggedCoin = coin;
         this._hideGestureHint();
-        this._hideTargetIndicator();
         this._hitTargetThisTurn = false;
         this._snapshotPositions();
+        if (step && step.type === 'drag' && coin !== step.sourceCoin) {
+            console.log('[Tutorial] guiding toward', step.sourceCoin?.name, 'but player grabbed', coin.name);
+        }
         return true;
     }
 
