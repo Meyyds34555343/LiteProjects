@@ -1,0 +1,18 @@
+{
+  "name": "coinduel-itch",
+  "platform": "web-mobile",
+  "buildPath": "project://build",
+  "outputName": "web-mobile-itch-v2",
+  "debug": false,
+  "md5Cache": false,
+  "startScene": "c6fb5356-14d1-4078-b500-d9c39a835f27",
+  "scenes": [
+    { "url": "db://assets/Scenes/main.scene",   "uuid": "c6fb5356-14d1-4078-b500-d9c39a835f27" },
+    { "url": "db://assets/Scenes/levels.scene", "uuid": "bce58732-9475-4830-ae41-ea3e1209be9c" },
+    { "url": "db://assets/Scenes/game.scene",   "uuid": "b2b62ba8-48ee-4476-b023-e0d116d98f0d" },
+    { "url": "db://assets/Scenes/pvp.scene",    "uuid": "37b652e0-6139-4a3e-82a5-353fdc8cadf2" }
+  ],
+  "packages": {
+    "web-mobile": { "orientation": "auto" }
+  }
+}

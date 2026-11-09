@@ -52,8 +52,8 @@
 <body>
   <div id="bootOverlay">
     <div class="title">CoinDuel2D</div>
-    <div id="bootMsg">Click Play to start · build 2026-11-09t</div>
-    <button id="bootBtn" type="button">Play</button>
+    <div id="bootMsg">Loading…</div>
+    <button id="bootBtn" type="button" style="display:none">Retry</button>
     <div id="bootErr"></div>
   </div>
 
@@ -158,7 +158,7 @@
         report('FAIL ' + text);
         errBox.style.display = 'block';
         errBox.textContent = text;
-        setMsg('Failed to start · build 2026-11-09t');
+        setMsg('Failed to start · build 2026-11-09u');
         btn.style.display = 'inline-block';
         btn.textContent = 'Retry';
         overlay.style.display = 'flex';
@@ -246,7 +246,7 @@
       function boot() {
         if (started) return;
         started = true;
-        setMsg('Loading… · build 2026-11-09t');
+        setMsg('Loading… · build 2026-11-09u');
         btn.style.display = 'none';
         errBox.style.display = 'none';
         ensureCanvasSize();
@@ -261,7 +261,7 @@
         }
 
         System.import('./application.js').then(function (mod) {
-          setMsg('Engine init… · build 2026-11-09t');
+          setMsg('Engine init… · build 2026-11-09u');
           var application = new mod.Application();
           return System.import('cc').then(function (engine) {
             application.init(engine);
@@ -287,6 +287,23 @@
       }
 
       btn.addEventListener('click', boot);
+
+      // Auto-boot. itch.io always embeds the game in a cross-origin iframe, so
+      // a "Play" gate here is just an extra click that users read as the game
+      // failing to load. Start immediately; only show a Retry button on error.
+      function autoBoot() {
+        try { boot(); } catch (e) { showErr(e); }
+      }
+      if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(autoBoot, 0);
+      } else {
+        window.addEventListener('DOMContentLoaded', function () { setTimeout(autoBoot, 0); });
+      }
+      // Safety net: if the overlay is still on screen after 20s, surface Retry.
+      setTimeout(function () {
+        if (overlay.parentNode) showErr(new Error('Boot timed out after 20s.'));
+      }, 20000);
+
       window.addEventListener('resize', ensureCanvasSize);
       ensureCanvasSize();
     })();

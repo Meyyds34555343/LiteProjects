@@ -31,15 +31,18 @@ export class LevelsScene extends Component {
     @property(Node)
     levelsContainer: Node = null!;
 
-    /** Columns in the grid. 3 matches the 640x512 scroll content of the scene. */
+    /**
+     * Columns in the grid. The scroll content is 640px wide and each cell is
+     * 160px, so 4 columns fill it exactly without horizontal scrolling.
+     */
     @property
-    public columns: number = 3;
+    public columns: number = 4;
 
-    /** Horizontal / vertical spacing between stage buttons. */
+    /** Horizontal / vertical spacing between stage buttons (prefab is 128x128). */
     @property
-    public cellSpacingX: number = 168;
+    public cellSpacingX: number = 160;
     @property
-    public cellSpacingY: number = 150;
+    public cellSpacingY: number = 168;
 
     private _levelFiles: string[] = [];
     private _items: Node[] = [];

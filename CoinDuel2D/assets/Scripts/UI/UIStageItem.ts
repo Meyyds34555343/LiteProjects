@@ -69,7 +69,10 @@ export class UIStageItem extends Component {
         if (this._resolved) return;
         this._resolved = true;
         if (!this.labelLevel) {
-            this.labelLevel = this.node.getChildByName('Label')?.getComponent(Label) ?? null;
+            // The prefab calls this child "Level" (legacy name "Label" also accepted).
+            this.labelLevel = this.node.getChildByName('Level')?.getComponent(Label)
+                ?? this.node.getChildByName('Label')?.getComponent(Label)
+                ?? null;
         }
         if (!this.nodeLock) {
             this.nodeLock = this.node.getChildByName('Locked');
@@ -160,8 +163,7 @@ export class UIStageItem extends Component {
             row.layer = this.node.layer;
             this.node.addChild(row);
             row.setPosition(0, this.starRowY, 0);
-        }
-        for (let i = 0; i < 3; i++) {
+        }        for (let i = 0; i < 3; i++) {
             const starNode = new Node(`Star${i + 1}`);
             starNode.layer = this.node.layer;
             row.addChild(starNode);

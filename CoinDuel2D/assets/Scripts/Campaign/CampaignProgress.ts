@@ -73,7 +73,7 @@ export class CampaignProgress {
     /** Whether the stage can be entered. */
     public static isUnlocked(stageId: number): boolean {
         if (stageId <= 1) return true;
-        if (stageId > TUTORIAL_STAGE_COUNT) return true; // legacy stages keep LevelManager rules
+        // Sequential unlocking for the whole campaign: clear N-1 to open N.
         return CampaignProgress.getStars(stageId - 1) > 0;
     }
 
