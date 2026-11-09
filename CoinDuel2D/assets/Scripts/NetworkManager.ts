@@ -15,12 +15,17 @@ export class NetworkManager {
         xhr.open('GET', url, true);
         xhr.timeout = NetworkManager.TIMEOUT;
         xhr.onload = () => {
+            if (xhr.status < 200 || xhr.status >= 300) {
+                console.warn('[HTTP] GET failed', xhr.status, url, (xhr.responseText || '').slice(0, 120));
+            }
             cb(xhr.status, xhr.responseText);
         };
         xhr.onerror = () => {
+            console.warn('[HTTP] GET network error (code 0) — blocked, CORS, or offline:', url);
             cb(0, '');
         };
         xhr.ontimeout = () => {
+            console.warn('[HTTP] GET timeout after', NetworkManager.TIMEOUT, 'ms:', url);
             cb(0, '');
         };
         xhr.send();

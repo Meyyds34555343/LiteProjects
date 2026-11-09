@@ -48,5 +48,21 @@
     "tutorial_skip": "跳过新手教程",
     "tutorial_complete": "教程完成！",
     "tutorial_block_intro": "这是障碍物！硬币碰到会反弹，注意避开",
-    "tutorial_mud_intro": "这是泥潭！硬币进入后会减速，小心陷阱"
+    "tutorial_mud_intro": "这是泥潭！硬币进入后会减速，小心陷阱",
+
+    "stage_1_name": "第一关 · 基础操作",
+    "stage_2_name": "第二关 · 绕开障碍",
+    "stage_3_name": "第三关 · 连击得分",
+    "stage_4_name": "第四关 · 小 Boss",
+    "tutorial_l1_intro": "目标：把硬币打飞，桌面上只留下一枚",
+    "tutorial_l1_drag_a": "拖动高亮的硬币，撞向右侧的硬币",
+    "tutorial_l1_drag_b": "很好！再撞一枚，只剩最后一枚就过关",
+    "tutorial_l2_intro": "目标：绕开中间的障碍物，把硬币撞飞",
+    "tutorial_l2_drag_a": "障碍物会反弹硬币，换一个角度撞向目标",
+    "tutorial_l3_intro": "目标：连续命中可以叠加分数倍率",
+    "tutorial_l3_drag_a": "先撞击中间那枚硬币触发连击",
+    "tutorial_l3_drag_b": "连击状态下再撞一枚，分数会更高",
+    "tutorial_l4_intro": "小 Boss 关：躲开障碍，清掉全部硬币",
+    "tutorial_l4_drag_a": "第一击：把左边的硬币撞向右边",
+    "tutorial_l4_drag_b": "最后一击：清空桌面即可完成新手教程"
 }

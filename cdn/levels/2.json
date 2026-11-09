@@ -1,0 +1,14 @@
+{
+    "id": 2,
+    "width": 800,
+    "height": 600,
+    "wall": { "thickness": 64 },
+    "coins": [
+        { "type": "coin", "class": 1, "canshot": true, "x": -240, "y": 170 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 240, "y": 170 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 0, "y": -170 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 240, "y": -150 },
+        { "type": "block", "x": 0, "y": 40, "shape": "circle", "radius": 56 },
+        { "type": "mud", "x": -100, "y": -60, "shape": "circle", "radius": 48, "friction": 0.5 }
+    ]
+}

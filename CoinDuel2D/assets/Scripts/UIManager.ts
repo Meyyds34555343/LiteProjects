@@ -126,6 +126,35 @@ export class UIManager extends Component {
         label.fontSize = lastTwo ? 28 : 24;
     }
 
+    /** Close win / fail / rank / confirm so only one overlay can be visible. */
+    public closeAllOverlays(): void {
+        this.uiWin?.close();
+        this.uiFail?.close();
+        this.uiRank?.close();
+        this.uiConfirm?.close();
+    }
+
+    /** In-round HUD (level / score / back). Hides end-game overlays. */
+    public showPlayingHUD(): void {
+        this.closeAllOverlays();
+        if (this.uiLevelPanel) this.uiLevelPanel.active = true;
+        if (this.uiScorePanel) this.uiScorePanel.active = true;
+        if (this.buttonBack?.node) this.buttonBack.node.active = true;
+    }
+
+    /** Hide in-round HUD before showing win or fail (never leave both overlays up). */
+    public prepareEndGameOverlay(kind: 'win' | 'fail'): void {
+        if (this.uiLevelPanel) this.uiLevelPanel.active = false;
+        if (this.uiScorePanel) this.uiScorePanel.active = false;
+        if (this.buttonBack?.node) this.buttonBack.node.active = false;
+        if (kind === 'win') {
+            this.uiFail?.close();
+            this.uiRank?.close();
+        } else {
+            this.uiWin?.close();
+        }
+    }
+
     /** 加分時分數彈一下，並浮出這次拿到的點數。 */
     private _popScore(gain: number): void {
         const scoreNode = this.labelScore?.node;

@@ -1,4 +1,5 @@
-import { _decorator, Component } from 'cc';
+import { _decorator, Component, sys } from 'cc';
+import { EDITOR, PREVIEW } from 'cc/env';
 import { NetworkManager } from './NetworkManager';
 import { StorageManager } from './StorageManager';
 const { ccclass } = _decorator;
@@ -47,6 +48,16 @@ export class UpdateManager extends Component {
     public static checkUpdate(progress: (p: number) => void, completed: (err: string, errParams?: ErrParams) => void): void {
         if (UpdateManager._running) {
             completed('main_update_err_running');
+            return;
+        }
+        // Creator preview / editor / localhost: never hit a missing update server (avoids 获取清单失败 (0)).
+        const url = (UpdateManager.serverUrl || '').trim();
+        const isLocalDevUrl = !url || /127\.0\.0\.1|localhost/i.test(url);
+        if (EDITOR || PREVIEW || isLocalDevUrl || !sys.isNative) {
+            // Web builds + Cocos preview also skip — itch/web use CDN, not this HTTP updater.
+            console.log('[Update] skip checkUpdate (preview/web/local)', { EDITOR, PREVIEW, url });
+            progress(1);
+            completed('');
             return;
         }
         UpdateManager._running = true;

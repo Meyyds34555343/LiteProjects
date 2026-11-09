@@ -18,7 +18,9 @@ Drop assets here. The game pulls them through `AssetSyncManager` (hash-diff, cac
 
 ### Creator loop (zero-touch)
 
-1. Open Blockly: https://glitchy-veil-4s4chq7.shipstatic.com/
+1. Open Blockly on a **real HTML host** (shipstatic / GitHub Pages).  
+   jsDelivr of `index.html` only shows source text — it is not a page host.  
+   Permanent option: GitHub Pages → `https://meyyds34555343.github.io/LiteProjects/`
 2. Design → **Copy COINMOD1** (or **Open in Runtime**).
 3. Runtime auto-loads `?mod=` via `ModAutoBoot`, syncs this CDN, spawns Scratch level — no Creator rebuild.
 

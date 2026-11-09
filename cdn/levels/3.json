@@ -1,0 +1,13 @@
+{
+    "id": 3,
+    "width": 800,
+    "height": 600,
+    "wall": { "thickness": 64 },
+    "coins": [
+        { "type": "coin", "class": 1, "canshot": true, "x": -250, "y": 150 },
+        { "type": "coin", "class": 1, "canshot": true, "x": -60, "y": 200 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 120, "y": 60 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 250, "y": -90 },
+        { "type": "coin", "class": 1, "canshot": true, "x": -120, "y": -170 }
+    ]
+}

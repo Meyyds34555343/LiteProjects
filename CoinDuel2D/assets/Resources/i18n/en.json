@@ -48,5 +48,21 @@
     "tutorial_skip": "Skip Tutorial",
     "tutorial_complete": "Tutorial Complete!",
     "tutorial_block_intro": "This is a blocker! Coins bounce off it — avoid hitting it",
-    "tutorial_mud_intro": "This is mud! Coins slow down when entering — watch out"
+    "tutorial_mud_intro": "This is mud! Coins slow down when entering — watch out",
+
+    "stage_1_name": "Stage 1 · Basics",
+    "stage_2_name": "Stage 2 · Obstacles",
+    "stage_3_name": "Stage 3 · Combos",
+    "stage_4_name": "Stage 4 · Mini Boss",
+    "tutorial_l1_intro": "Goal: knock coins away and leave just one on the table",
+    "tutorial_l1_drag_a": "Drag the highlighted coin into the coin on the right",
+    "tutorial_l1_drag_b": "Nice! Hit one more so only a single coin remains",
+    "tutorial_l2_intro": "Goal: steer around the blocker and knock the coins out",
+    "tutorial_l2_drag_a": "Blockers bounce coins back — change your angle and hit the target",
+    "tutorial_l3_intro": "Goal: chained hits raise your score multiplier",
+    "tutorial_l3_drag_a": "Hit the centre coin first to start a combo",
+    "tutorial_l3_drag_b": "Now hit another while the combo is alive for more points",
+    "tutorial_l4_intro": "Mini boss: dodge the obstacles and clear every coin",
+    "tutorial_l4_drag_a": "First hit: knock the left coin into the right one",
+    "tutorial_l4_drag_b": "Final hit: clear the table to finish the beginner tutorial"
 }

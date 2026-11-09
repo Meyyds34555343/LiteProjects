@@ -48,5 +48,21 @@
     "tutorial_skip": "튜토리얼 건너뛰기",
     "tutorial_complete": "튜토리얼 완료!",
     "tutorial_block_intro": "이것은 장애물입니다! 코인이 튕겨나가니 피하세요",
-    "tutorial_mud_intro": "이것은 진흙입니다! 코인이 들어가면 느려지니 조심하세요"
+    "tutorial_mud_intro": "이것은 진흙입니다! 코인이 들어가면 느려지니 조심하세요",
+
+    "stage_1_name": "스테이지 1 · 기본 조작",
+    "stage_2_name": "스테이지 2 · 장애물",
+    "stage_3_name": "스테이지 3 · 콤보",
+    "stage_4_name": "스테이지 4 · 미니 보스",
+    "tutorial_l1_intro": "목표: 코인을 쳐내고 테이블에 한 개만 남기기",
+    "tutorial_l1_drag_a": "빛나는 코인을 드래그해 오른쪽 코인을 치세요",
+    "tutorial_l1_drag_b": "좋아요! 한 개 더 쳐서 마지막 한 개만 남기세요",
+    "tutorial_l2_intro": "목표: 가운데 장애물을 피해 코인을 쳐내기",
+    "tutorial_l2_drag_a": "장애물에 닿으면 코인이 튕깁니다. 각도를 바꿔 노리세요",
+    "tutorial_l3_intro": "목표: 연속 명중으로 점수 배율을 올리기",
+    "tutorial_l3_drag_a": "먼저 가운데 코인을 쳐서 콤보를 시작하세요",
+    "tutorial_l3_drag_b": "콤보 중에 한 개 더 치면 점수가 더 올라갑니다",
+    "tutorial_l4_intro": "미니 보스: 장애물을 피해 모든 코인을 제거하세요",
+    "tutorial_l4_drag_a": "첫 번째 타격: 왼쪽 코인을 오른쪽으로 치세요",
+    "tutorial_l4_drag_b": "마지막 타격: 테이블을 비우면 튜토리얼 완료"
 }

@@ -4,7 +4,7 @@
  * Then CDN sync (mod.assetManifestUrl or DEFAULT), Scratch level wins.
  */
 import { sys } from 'cc';
-import { DEFAULT_CDN_MANIFEST_URL } from '../Meme/CdnConfig';
+import { DEFAULT_CDN_MANIFEST_URL, resolveCdnManifestUrl } from '../Meme/CdnConfig';
 import { AssetSyncManager } from '../Meme/AssetSyncManager';
 import { LevelManager } from '../LevelManager';
 import { ModConfig } from './ModConfigSchema';
@@ -53,14 +53,20 @@ export class ModAutoBoot {
         }
     }
 
-    public static applyMod(mod: ModConfig | null): ModConfig | null {
+    /** Apply mod pipelines; only stamp Scratch level when applyLevel is true (explicit ?mod= / ?modUrl=). */
+    public static applyMod(mod: ModConfig | null, applyLevel: boolean = true): ModConfig | null {
         if (!mod) return null;
         const interp = GameLogicInterpreter.getOrCreate();
-        interp.load(mod);
-        if (mod.level) {
+        interp.load(mod, applyLevel);
+        if (applyLevel && mod.level) {
             LevelManager.setScratchLevel(mod.level as never);
         }
         return mod;
+    }
+
+    /** True when the page was opened with an explicit share/mod URL. */
+    public static hasExplicitModQuery(): boolean {
+        return !!(this.peekShareCode() || this.peekModUrl());
     }
 
     public static applyShareCode(code: string): ModConfig | null {
@@ -93,10 +99,10 @@ export class ModAutoBoot {
 
         const afterIngest = (mod: ModConfig | null) => {
             if (!mod) {
-                // Fallback: cached mod already may have been applied by GameScene historically
+                // Cache: pipelines/CDN only — never overwrite Ladder/campaign with Scratch level
                 const cached = this.readCachedMod();
                 if (cached) {
-                    this.applyMod(cached);
+                    this.applyMod(cached, false);
                     this._syncCdn(sync, cached, (e) => finish(e, cached));
                     return;
                 }
@@ -123,13 +129,13 @@ export class ModAutoBoot {
                     afterIngest(null);
                     return;
                 }
-                const mod = this.applyMod(data as ModConfig);
+                const mod = this.applyMod(data as ModConfig, true);
                 afterIngest(mod);
             });
             return;
         }
 
-        // Prefer interpreter cache / localStorage when no URL
+        // Prefer interpreter cache / localStorage when no URL (no Scratch level stamp)
         const interp = GameLogicInterpreter.getOrCreate();
         if (interp.mod) {
             afterIngest(interp.mod);
@@ -147,12 +153,14 @@ export class ModAutoBoot {
         mod: ModConfig | null,
         done: (err: string | null) => void,
     ): void {
-        const url = (mod?.assetManifestUrl?.trim() || DEFAULT_CDN_MANIFEST_URL || '').trim();
-        if (!sync || !url) {
+        if (!sync) {
             done(null);
             return;
         }
+        // Always absolute jsDelivr (or mod override); never empty / localhost / relative.
+        const url = resolveCdnManifestUrl(mod?.assetManifestUrl || DEFAULT_CDN_MANIFEST_URL);
         sync.manifestUrl = url;
+        console.log('[ModAutoBoot] CDN sync →', url);
         sync.sync((err) => done(err));
     }
 

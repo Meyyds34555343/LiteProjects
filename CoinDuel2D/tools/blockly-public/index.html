@@ -124,14 +124,16 @@
       <input id="uiLose" placeholder="UI: lose text" value="" title="uiStrings.lose" />
     </div>
     <div class="actions">
-      <button class="ok" id="btnCopyShare" title="Primary CTA">Copy COINMOD1</button>
-      <button class="primary" id="btnOpenRuntime">Open in Runtime</button>
+      <button class="ok" id="btnCopyShare" title="Primary CTA — paste into itch.io via Load / share">Copy COINMOD1</button>
       <button id="btnExportShare">Export Share</button>
       <button id="btnExportJson">Mod JSON</button>
       <button id="btnExportLevel">Level JSON</button>
       <button id="btnExportWs">Workspace</button>
       <button id="btnImportShare">Import</button>
       <button id="btnLoadLevel1" title="Fetch cdn/levels/1.json into blocks">Load Level 1</button>
+      <button id="btnLoadLevel2" title="Fetch cdn/levels/2.json into blocks">Load Level 2</button>
+      <input id="loadLevelId" type="number" min="1" value="2" title="Level id to load from CDN" style="width:52px;" />
+      <button id="btnLoadLevelN" title="Fetch cdn/levels/{id}.json">Load Level #</button>
       <button id="btnCopyJson">Copy JSON</button>
       <button id="btnClear">Clear</button>
       <button id="btnGitToggle" title="GitHub version control" class="primary">Git</button>
@@ -207,7 +209,6 @@
   <script>
     /* ── Web-first endpoints (match CdnConfig / shipstatic runtime) ── */
     const CDN_MANIFEST = 'https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/manifest.json';
-    const RUNTIME_URL = 'https://turbo-surge-fq6t6f7.shipstatic.com/';
     const WS_AUTOSAVE_KEY = 'CoinDuel:blocklyWorkspace';
     const GIT_CFG_KEY = 'CoinDuel:gitConfig';
     const N8N_CFG_KEY = 'CoinDuel:n8nConfig';
@@ -343,13 +344,26 @@
       return (h >>> 0).toString(16).padStart(8, '0');
     }
 
+    function memeCdnTextureUrl(memeId) {
+      if (!memeId) return '';
+      var base = CDN_MANIFEST.replace(/\/[^/]*$/, '/');
+      return base + 'textures/' + encodeURIComponent(String(memeId)) + '.png';
+    }
+
     function placeToItem(kind, x, y, radius, extra) {
       extra = extra || {};
       var cls = extra.classId || 1;
       var skinBits = {};
       if (extra.skin) skinBits.skinKey = extra.skin;
       if (extra.url) skinBits.skin = { default: extra.url, idle: extra.url };
-      if (extra.meme) skinBits.memeId = extra.meme;
+      if (extra.meme) {
+        skinBits.memeId = extra.meme;
+        // Absolute CDN URL so Open Runtime can skin coins even before meme registry sync
+        var tex = memeCdnTextureUrl(extra.meme);
+        if (tex && !skinBits.skin) {
+          skinBits.skin = { default: tex, idle: tex, aim: tex, shot: tex, hitted: tex };
+        }
+      }
       if (kind === 'striker') return Object.assign({ type: 'coin', class: cls, x: x, y: y, canshot: true, radius: radius }, skinBits);
       if (kind === 'target') return Object.assign({ type: 'coin', class: cls, x: x, y: y, canshot: false, radius: radius }, skinBits);
       if (kind === 'knockback') return Object.assign({ type: 'coin', class: cls, x: x, y: y, canshot: false, radius: radius, behavior: 'KnockbackBehavior', behaviors: ['KnockbackBehavior'] }, skinBits);
@@ -361,6 +375,32 @@
       return Object.assign({ type: 'coin', class: cls, x: x, y: y, canshot: false, radius: radius }, skinBits);
     }
 
+    /** Tracks which CDN/Git level file is being edited so Save does not overwrite 1.json by accident. */
+    let editTarget = { id: null, path: null };
+
+    function parseLevelIdFromPath(path) {
+      const m = String(path || '').match(/(?:^|\/)(\d+)\.json$/i);
+      return m ? Number(m[1]) : null;
+    }
+
+    function rememberEditTarget(id, path) {
+      const fromPath = parseLevelIdFromPath(path);
+      const n = fromPath != null ? fromPath : Number(id);
+      editTarget = {
+        id: Number.isFinite(n) && n > 0 ? n : null,
+        path: path || (Number.isFinite(n) && n > 0 ? ('cdn/levels/' + n + '.json') : null),
+      };
+    }
+
+    function syncSetupBlockId(id) {
+      if (!Number.isFinite(id) || id < 1) return;
+      try {
+        workspace.getAllBlocks(false).forEach(function (b) {
+          if (b.type === 'level_setup') b.setFieldValue(id, 'ID');
+        });
+      } catch (_) {}
+    }
+
     function workspaceToMod(ws) {
       const tops = ws.getTopBlocks(true);
       const pipelines = [];
@@ -369,7 +409,8 @@
       const lose = [];
       let physics = { tableFriction: 0.35, restitutionScale: 1, enableTimeReversePenalty: true, aimPowerScale: 1 };
       const varNames = new Set(['KarmaPoints', 'ExplosionPower']);
-      const levelDraft = { id: 1, width: 800, height: 600, wall: 64, coins: [], felt: '', wallSkin: '' };
+      const defaultId = (editTarget.id != null) ? editTarget.id : 1;
+      const levelDraft = { id: defaultId, width: 800, height: 600, wall: 64, coins: [], felt: '', wallSkin: '' };
       let hasLevel = false;
 
       for (const top of tops) {
@@ -476,6 +517,10 @@
       };
       if (Object.keys(uiStrings).length) mod.uiStrings = uiStrings;
       if (hasLevel) {
+        // Keep loaded level N when setup block still defaults to 1
+        if (editTarget.id != null && editTarget.id !== 1 && Number(levelDraft.id) === 1) {
+          levelDraft.id = editTarget.id;
+        }
         mod.level = {
           id: levelDraft.id,
           width: levelDraft.width,
@@ -501,12 +546,8 @@
         || coins.some(function (c) { return c.canshot === true; });
       if (mod.level && coins.length && !hasStriker) errs.push('No striker (canshot coin) in level');
       if (!mod.win || !mod.win.length) errs.push('No WIN rule');
-      const known = window.__cdnMemeIds;
-      if (known && known.length) {
-        coins.forEach(function (c) {
-          if (c.memeId && known.indexOf(String(c.memeId)) < 0) errs.push('Unknown memeId: ' + c.memeId);
-        });
-      }
+      // Do not hard-fail on memeId: CDN catalog can lag jsDelivr; Drive may add textures only.
+      // Open Runtime loads absolute skin URLs regardless of memes/index.json.
       return errs;
     }
 
@@ -901,53 +942,126 @@
     document.getElementById('btnPrevPause').onclick = function () { simPlaying = false; };
     document.getElementById('btnPrevReset').onclick = function () { resetSimFromMod(liveMod); simPlaying = true; };
 
+    function bust(url) {
+      const sep = String(url).indexOf('?') >= 0 ? '&' : '?';
+      return url + sep + 't=' + Date.now();
+    }
+
+    const LOCAL_MEME_KEY = 'CoinDuel:knownMemes';
+
+    function loadLocalMemeIds() {
+      try {
+        const raw = localStorage.getItem(LOCAL_MEME_KEY);
+        if (!raw) return {};
+        const obj = JSON.parse(raw);
+        return obj && typeof obj === 'object' ? obj : {};
+      } catch (_) { return {}; }
+    }
+
+    function saveLocalMemeId(id, texUrl) {
+      try {
+        const map = loadLocalMemeIds();
+        map[id] = { texUrl: texUrl || map[id] && map[id].texUrl || '', savedAt: Date.now() };
+        localStorage.setItem(LOCAL_MEME_KEY, JSON.stringify(map));
+      } catch (_) {}
+    }
+
+    function rememberMemeId(id, texUrl) {
+      id = String(id || '').trim();
+      if (!id) return;
+      if (!window.__cdnMemeIds) window.__cdnMemeIds = [];
+      if (window.__cdnMemeIds.indexOf(id) < 0) window.__cdnMemeIds.push(id);
+      saveLocalMemeId(id, texUrl);
+      if (texUrl && !memeAtlas[id]) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function () { memeAtlas[id] = img; };
+        img.src = bust(texUrl);
+      }
+    }
+
+    function githubRawTextureUrl(memeId, ext) {
+      const c = readGitCfg();
+      const owner = c.owner || 'Meyyds34555343';
+      const repo = c.repo || 'LiteProjects';
+      const branch = c.branch || 'behavior-scratch';
+      return 'https://raw.githubusercontent.com/' + owner + '/' + repo + '/' + branch
+        + '/cdn/textures/' + encodeURIComponent(memeId) + '.' + (ext || 'png');
+    }
+
+    function addMemeCatalogButton(el, id, texUrl) {
+      id = String(id);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = id;
+      btn.style.cssText = 'margin:2px;padding:2px 6px;font-size:0.7rem;';
+      btn.onclick = function () {
+        const tops = workspace.getTopBlocks(true);
+        let target = null;
+        for (const t of tops) {
+          if (t.type === 'level_place' && t.getFieldValue('KIND') !== 'striker') { target = t; break; }
+        }
+        if (!target) {
+          target = workspace.newBlock('level_place');
+          target.initSvg(); target.render(); target.moveBy(420, 300);
+          target.setFieldValue('target', 'KIND');
+        }
+        target.setFieldValue(id, 'MEME');
+        scheduleLive();
+        setStatus('Applied memeId ' + id + ' to a place block.', 'ok');
+      };
+      el.appendChild(btn);
+      rememberMemeId(id, texUrl);
+    }
+
     function loadCdnCatalog() {
       const el = document.getElementById('memeCatalog');
       el.textContent = 'Loading CDN memes…';
-      fetch(CDN_MANIFEST).then(function (r) { return r.json(); }).then(function (man) {
+      // Cache-bust: jsDelivr often lags; Drive uploads may only add textures/* without memes/index.json
+      fetch(bust(CDN_MANIFEST)).then(function (r) { return r.json(); }).then(function (man) {
         const base = (man.baseUrl || CDN_MANIFEST.replace(/\/[^/]*$/, '/'));
         const memeItem = (man.items || []).find(function (i) { return i.kind === 'meme' && String(i.filename).indexOf('index') >= 0; })
           || (man.items || []).find(function (i) { return i.kind === 'meme'; });
         const memeUrl = man.memeConfig ? (base + man.memeConfig) : (memeItem ? base + memeItem.filename : base + 'memes/index.json');
-        return fetch(memeUrl).then(function (r) { return r.json(); }).then(function (idx) {
-          const list = Array.isArray(idx) ? idx : (idx.memes || idx.items || []);
-          const ids = [];
+        const idSet = {};
+
+        function finishUi() {
+          // Keep locally saved memes visible even when jsDelivr catalog lags
+          const local = loadLocalMemeIds();
+          Object.keys(local).forEach(function (id) {
+            if (!idSet[id]) idSet[id] = (local[id] && local[id].texUrl) || memeCdnTextureUrl(id);
+          });
+          const ids = Object.keys(idSet).sort();
+          window.__cdnMemeIds = ids;
           el.innerHTML = '<strong style="color:#5ec8ff">CDN memes</strong> ';
+          ids.forEach(function (id) {
+            addMemeCatalogButton(el, id, idSet[id] || memeCdnTextureUrl(id));
+          });
+          if (!ids.length) el.textContent = 'CDN catalog empty — check manifest.';
+          else setStatus('CDN memes loaded: ' + ids.join(', '), 'ok');
+        }
+
+        // 1) Texture-only uploads (Google Drive path) count as known memeIds
+        (man.items || []).forEach(function (it) {
+          if (!it || !it.filename) return;
+          const m = String(it.filename).match(/^textures\/([^/]+)\.(png|jpe?g|webp|gif)$/i);
+          if (!m) return;
+          const id = m[1];
+          idSet[id] = it.url || (base + it.filename);
+        });
+
+        return fetch(bust(memeUrl)).then(function (r) { return r.json(); }).then(function (idx) {
+          const list = Array.isArray(idx) ? idx : (idx.memes || idx.items || []);
           list.forEach(function (m) {
             const id = m.id || m.memeId || m.name;
             if (!id) return;
-            ids.push(String(id));
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = id;
-            btn.style.cssText = 'margin:2px;padding:2px 6px;font-size:0.7rem;';
-            btn.onclick = function () {
-              const tops = workspace.getTopBlocks(true);
-              let target = null;
-              for (const t of tops) {
-                if (t.type === 'level_place' && t.getFieldValue('KIND') !== 'striker') { target = t; break; }
-              }
-              if (!target) {
-                target = workspace.newBlock('level_place');
-                target.initSvg(); target.render(); target.moveBy(420, 300);
-                target.setFieldValue('target', 'KIND');
-              }
-              target.setFieldValue(String(id), 'MEME');
-              scheduleLive();
-              setStatus('Applied memeId ' + id + ' to a place block.', 'ok');
-            };
-            el.appendChild(btn);
-            // warm atlas
-            const tex = m.textures && (m.textures.default || m.textures.idle);
-            if (tex) {
-              const img = new Image();
-              img.crossOrigin = 'anonymous';
-              img.onload = function () { memeAtlas[String(id)] = img; };
-              img.src = tex.indexOf('http') === 0 ? tex : (base + tex);
-            }
+            const tex = (m.textures && (m.textures.default || m.textures.idle)) || memeCdnTextureUrl(id);
+            idSet[String(id)] = tex.indexOf('http') === 0 ? tex : (base + tex);
           });
-          window.__cdnMemeIds = ids;
-          if (!ids.length) el.textContent = 'CDN catalog empty — check manifest.';
+          finishUi();
+        }).catch(function () {
+          // Index missing/stale — still show texture ids from manifest
+          finishUi();
         });
       }).catch(function () {
         el.textContent = 'CDN unreachable (offline ok). Meme picker disabled.';
@@ -1126,15 +1240,9 @@
       return code;
     }
     document.getElementById('btnExportShare').onclick = function () { exportShareCode(false); };
-    document.getElementById('btnCopyShare').onclick = function () { exportShareCode(true); };
-    document.getElementById('btnOpenRuntime').onclick = function () {
-      const code = exportShareCode(true);
-      if (!code) return;
-      const url = RUNTIME_URL + (RUNTIME_URL.indexOf('?') >= 0 ? '&' : '?') + 'mod=' + encodeURIComponent(code);
-      if (code.length > 1800) {
-        setStatus('Share code long for URL — copied to clipboard; paste via runtime Load or shorten level skins.', 'err');
-      }
-      window.open(url, '_blank');
+    document.getElementById('btnCopyShare').onclick = function () {
+      exportShareCode(true);
+      setStatus('COINMOD1 copied — open itch.io CoinDuel, paste to load (no shipstatic Open Runtime).', 'ok');
     };
     document.getElementById('btnExportJson').onclick = () => {
       const mod = workspaceToMod(workspace);
@@ -1144,6 +1252,8 @@
     document.getElementById('btnExportLevel').onclick = () => {
       const mod = workspaceToMod(workspace);
       const level = mod.level || { id: 1, width: 800, height: 600, wall: { thickness: 64 }, coins: [] };
+      level.id = resolveSaveLevelId(level);
+      syncSetupBlockId(level.id);
       document.getElementById('io').value = JSON.stringify(level, null, 2);
       setStatus('Exported Level JSON (' + (level.coins || []).length + ' objects) — save as levels/' + level.id + '.json', 'ok');
     };
@@ -1159,11 +1269,13 @@
       document.getElementById('io').value = 'COINWS1:' + compress(state);
       setStatus('Exported compressed workspace string (COINWS1).', 'ok');
     };
-    function levelJsonToMod(level) {
+    function levelJsonToMod(level, forcedId) {
+      const id = (forcedId != null) ? forcedId : (level && level.id != null ? level.id : 1);
+      const levelCopy = Object.assign({}, level || {}, { id: id });
       return {
         schemaVersion: 1,
-        id: 'mod_level_' + (level.id || 1),
-        name: 'Level ' + (level.id || 1),
+        id: 'mod_level_' + id,
+        name: 'Level ' + id,
         version: Date.now(),
         graph: { blocks: [] },
         pipelines: [],
@@ -1171,7 +1283,7 @@
         lose: [{ type: 'STRIKER_FALLS_OFF_TABLE' }],
         physics: { tableFriction: 0.35, restitutionScale: 1, enableTimeReversePenalty: true, aimPowerScale: 1 },
         variables: [],
-        level: level,
+        level: levelCopy,
         assetManifestUrl: CDN_MANIFEST,
         boot: { scene: 'game', autoPlay: true },
       };
@@ -1182,18 +1294,68 @@
         && obj.schemaVersion == null && !Array.isArray(obj.pipelines);
     }
 
-    function importModIntoEditor(mod, label) {
+    function importModIntoEditor(mod, label, sourcePath) {
       if (!mod || mod.schemaVersion !== 1) {
         setStatus('Invalid mod.', 'err');
         return;
+      }
+      const pathId = parseLevelIdFromPath(sourcePath);
+      if (pathId != null) {
+        if (!mod.level) mod.level = { id: pathId, width: 800, height: 600, wall: 64, coins: [] };
+        mod.level.id = pathId;
+        mod.id = 'mod_level_' + pathId;
+        mod.name = 'Level ' + pathId;
+        rememberEditTarget(pathId, sourcePath);
+      } else if (mod.level && mod.level.id != null) {
+        rememberEditTarget(mod.level.id, null);
       }
       try { localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod)); } catch (_) {}
       document.getElementById('io').value = JSON.stringify(mod, null, 2);
       document.getElementById('modName').value = mod.name || 'Blockly Mode';
       rebuildWorkspaceFromMod(mod);
+      if (editTarget.id != null) syncSetupBlockId(editTarget.id);
       scheduleLive();
       const n = (mod.level && mod.level.coins && mod.level.coins.length) || 0;
-      setStatus((label || 'Imported') + ' — ' + n + ' objects as Level blocks.', 'ok');
+      const idHint = editTarget.id != null ? (' (editing level ' + editTarget.id + ')') : '';
+      setStatus((label || 'Imported') + ' — ' + n + ' objects as Level blocks.' + idHint, 'ok');
+    }
+
+    function loadCdnLevel(id) {
+      const n = Number(id);
+      if (!Number.isFinite(n) || n < 1) {
+        setStatus('Enter a valid level id.', 'err');
+        return;
+      }
+      const base = CDN_MANIFEST.replace(/\/[^/]*$/, '/');
+      const filePath = 'cdn/levels/' + n + '.json';
+      const url = base + 'levels/' + n + '.json';
+      setStatus('Loading Level ' + n + ' from CDN…');
+      fetch(url).then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function (level) {
+        importModIntoEditor(levelJsonToMod(level, n), 'Loaded Level ' + n, filePath);
+        const sel = document.getElementById('gitFileList');
+        if (sel) {
+          let found = false;
+          for (let i = 0; i < sel.options.length; i++) {
+            if (parseLevelIdFromPath(sel.options[i].value) === n || sel.options[i].textContent === (n + '.json')) {
+              sel.selectedIndex = i;
+              found = true;
+              break;
+            }
+          }
+          if (!found) {
+            const opt = document.createElement('option');
+            opt.value = filePath;
+            opt.textContent = n + '.json';
+            sel.appendChild(opt);
+            sel.value = filePath;
+          }
+        }
+      }).catch(function (e) {
+        setStatus('Load Level ' + n + ' failed: ' + e.message + ' — paste cdn/levels/' + n + '.json then Import.', 'err');
+      });
     }
 
     document.getElementById('btnImportShare').onclick = () => {
@@ -1217,7 +1379,9 @@
       try {
         const data = JSON.parse(raw);
         if (isLevelJson(data)) {
-          importModIntoEditor(levelJsonToMod(data), 'Imported Level JSON');
+          const forcedId = (data.id != null) ? data.id : editTarget.id;
+          importModIntoEditor(levelJsonToMod(data, forcedId), 'Imported Level JSON',
+            forcedId != null ? ('cdn/levels/' + forcedId + '.json') : null);
           return;
         }
         if (data.schemaVersion === 1 && data.level) {
@@ -1235,18 +1399,10 @@
       }
     };
 
-    document.getElementById('btnLoadLevel1').onclick = function () {
-      const base = CDN_MANIFEST.replace(/\/[^/]*$/, '/');
-      const url = base + 'levels/1.json';
-      setStatus('Loading Level 1 from CDN…');
-      fetch(url).then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      }).then(function (level) {
-        importModIntoEditor(levelJsonToMod(level), 'Loaded Level 1');
-      }).catch(function (e) {
-        setStatus('Load Level 1 failed: ' + e.message + ' — paste cdn/levels/1.json then Import.', 'err');
-      });
+    document.getElementById('btnLoadLevel1').onclick = function () { loadCdnLevel(1); };
+    document.getElementById('btnLoadLevel2').onclick = function () { loadCdnLevel(2); };
+    document.getElementById('btnLoadLevelN').onclick = function () {
+      loadCdnLevel(document.getElementById('loadLevelId').value || 2);
     };
     document.getElementById('btnClear').onclick = () => {
       workspace.clear();
@@ -1329,8 +1485,22 @@
     }
 
     function levelFileName(level) {
-      const id = (level && level.id != null) ? level.id : 1;
+      const id = (level && level.id != null) ? level.id : ((editTarget.id != null) ? editTarget.id : 1);
       return String(id) + '.json';
+    }
+
+    function resolveSaveLevelId(level) {
+      const selPath = (document.getElementById('gitFileList').value || '').trim();
+      const fromSel = parseLevelIdFromPath(selPath);
+      const fromSetup = level && level.id != null ? Number(level.id) : null;
+      const fromTarget = editTarget.id;
+      // If we loaded 2.json but setup still says 1, keep writing 2.json — never clobber level 1 by accident.
+      if (fromTarget != null && fromTarget !== 1 && (!Number.isFinite(fromSetup) || fromSetup === 1)) return fromTarget;
+      if (fromSel != null && fromSel !== 1 && (!Number.isFinite(fromSetup) || fromSetup === 1)) return fromSel;
+      if (Number.isFinite(fromSetup) && fromSetup > 0) return fromSetup;
+      if (fromTarget != null) return fromTarget;
+      if (fromSel != null) return fromSel;
+      return 1;
     }
 
     document.getElementById('btnGitSave').onclick = async function () {
@@ -1338,7 +1508,11 @@
         const c = readGitCfg();
         const mod = workspaceToMod(workspace);
         const level = mod.level || { id: 1, width: 800, height: 600, wall: { thickness: 64 }, coins: [] };
-        const file = levelFileName(level);
+        const saveId = resolveSaveLevelId(level);
+        level.id = saveId;
+        syncSetupBlockId(saveId);
+        rememberEditTarget(saveId, c.path + '/' + saveId + '.json');
+        const file = String(saveId) + '.json';
         const fullPath = c.path + '/' + file;
         const bodyText = JSON.stringify(level, null, 4) + '\n';
         setStatus('Saving ' + fullPath + ' to GitHub…');
@@ -1353,7 +1527,7 @@
         } catch (_) { /* new file */ }
         const name = (document.getElementById('modName').value || 'level').trim();
         const payload = {
-          message: 'editor: save level ' + level.id + ' (' + name + ')',
+          message: 'editor: save level ' + saveId + ' (' + name + ')',
           content: utf8ToBase64(bodyText),
           branch: c.branch,
         };
@@ -1366,7 +1540,7 @@
         const commit = result && result.commit && result.commit.sha
           ? result.commit.sha.slice(0, 7) : 'ok';
         document.getElementById('io').value = bodyText;
-        setStatus('Committed ' + fullPath + ' @ ' + commit + ' on ' + c.branch + '.', 'ok');
+        setStatus('Committed ' + fullPath + ' @ ' + commit + ' on ' + c.branch + ' (level id ' + saveId + ').', 'ok');
         document.getElementById('btnGitList').click();
       } catch (e) {
         setStatus('Git save failed: ' + e.message, 'err');
@@ -1426,9 +1600,10 @@
         const text = base64ToUtf8(data.content);
         const parsed = JSON.parse(text);
         if (isLevelJson(parsed)) {
-          importModIntoEditor(levelJsonToMod(parsed), 'Loaded from Git ' + fullPath);
+          const forcedId = parseLevelIdFromPath(fullPath);
+          importModIntoEditor(levelJsonToMod(parsed, forcedId), 'Loaded from Git ' + fullPath, fullPath);
         } else if (parsed.schemaVersion === 1) {
-          importModIntoEditor(parsed, 'Loaded ModConfig from Git ' + fullPath);
+          importModIntoEditor(parsed, 'Loaded ModConfig from Git ' + fullPath, fullPath);
         } else {
           throw new Error('Not a level or ModConfig JSON');
         }
@@ -1634,10 +1809,17 @@
       if (!form.file) { setStatus('Choose a PNG/JPEG image.', 'err'); return; }
       try {
         setStatus('Committing meme "' + form.memeId + '" via GitHub…');
+        const ext = (form.file.type || '').indexOf('jpeg') >= 0 || (form.file.type || '').indexOf('jpg') >= 0 ? 'jpg' : 'png';
         const data = await commitMemeToGit(form.memeId, form.behavior, form.file);
+        // Prefer raw.githubusercontent immediately (jsDelivr lags); also keep local blob for preview
+        const rawUrl = githubRawTextureUrl(data.memeId, ext);
+        const blobUrl = URL.createObjectURL(form.file);
+        rememberMemeId(data.memeId, rawUrl);
+        memeAtlas[data.memeId] = new Image();
+        memeAtlas[data.memeId].src = blobUrl;
         applyMemeIdToPlace(data.memeId);
         document.getElementById('io').value = JSON.stringify(data, null, 2);
-        setStatus('Git committed meme "' + data.memeId + '" — Refresh catalog in ~1–5 min.', 'ok');
+        setStatus('Saved meme "' + data.memeId + '" to Git (' + data.branch + '). Catalog may lag on jsDelivr; id is kept locally.', 'ok');
         setTimeout(function () { loadCdnCatalog(); }, 2000);
       } catch (e) {
         setStatus('Git Add Meme failed: ' + e.message, 'err');
@@ -1685,6 +1867,7 @@
           throw new Error(err);
         }
         const id = (data && data.memeId) || form.memeId;
+        rememberMemeId(id, memeCdnTextureUrl(id));
         applyMemeIdToPlace(id);
         document.getElementById('io').value = data ? JSON.stringify(data, null, 2) : rawText;
         setStatus('n8n committed meme "' + id + '" — catalog may lag ~1–5 min on jsDelivr.', 'ok');

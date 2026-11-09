@@ -27,6 +27,7 @@ import { GameLogicInterpreter } from '../Mod/GameLogicInterpreter';
 import { DynamicAssetLoader, PRESET_COIN_SKINS } from './DynamicAssetLoader';
 import { TableController } from '../TableController';
 import { Sprite } from 'cc';
+import { DEFAULT_CDN_MANIFEST_URL, resolveCdnManifestUrl } from './CdnConfig';
 
 const { ccclass, property } = _decorator;
 
@@ -58,9 +59,12 @@ interface TexturePack {
 export class AssetSyncManager extends Component {
     public static instance: AssetSyncManager | null = null;
 
-    /** 遠端 manifest URL。空字串＝只吃本地快取，不上網。 */
+    /**
+     * Remote AssetManifest URL. Must be absolute https (jsDelivr).
+     * Empty / relative / localhost is replaced by DEFAULT_CDN_MANIFEST_URL at sync time.
+     */
     @property
-    public manifestUrl = '';
+    public manifestUrl: string = DEFAULT_CDN_MANIFEST_URL;
 
     private _running = false;
     private _memes = new Map<string, MemeConfig>();
@@ -109,27 +113,54 @@ export class AssetSyncManager extends Component {
     /**
      * 對齊圖上的資產交互流程：
      * Manifest → 比 hash → 增量下載 MemeConfig / LevelConfig / 貼圖音效。
+     * Always uses an absolute CDN URL (never relative / 127.0.0.1). Cache-busts with ?t=.
      */
     public sync(done?: (err: string | null) => void): void {
-        if (!this.manifestUrl) {
-            done?.(null);
-            return;
-        }
+        const clean = resolveCdnManifestUrl(this.manifestUrl);
+        this.manifestUrl = clean;
         if (this._running) {
+            console.warn('[AssetSync] sync already running');
             done?.('busy');
             return;
         }
         this._running = true;
-        NetworkManager.HttpGet(this.manifestUrl, (code, body) => {
+        const fetchUrl = AssetSyncManager._withCacheBust(clean);
+        console.log('[AssetSync] fetching manifest:', fetchUrl);
+        NetworkManager.HttpGet(fetchUrl, (code, body) => {
+            console.log(
+                '[AssetSync] manifest HTTP',
+                code,
+                'bytes=',
+                body ? body.length : 0,
+                'url=',
+                fetchUrl,
+            );
             if (code !== 200 || !body) {
+                console.warn(
+                    '[AssetSync] manifest fetch failed — check itch Network tab for',
+                    fetchUrl,
+                    '| code=',
+                    code,
+                    '| bodyPreview=',
+                    (body || '').slice(0, 160),
+                );
                 this._finish('network', done);
                 return;
             }
             const manifest = this._parseManifest(body);
             if (!manifest) {
+                console.warn('[AssetSync] manifest JSON invalid. Preview:', body.slice(0, 200));
                 this._finish('manifest', done);
                 return;
             }
+            console.log(
+                '[AssetSync] manifest ok version=',
+                manifest.version,
+                'items=',
+                manifest.items?.length ?? 0,
+                'baseUrl=',
+                manifest.baseUrl || '(from manifest path)',
+            );
             this._syncManifest(manifest, (ok) => {
                 if (ok) {
                     this._hashes.version = manifest.version;
@@ -138,6 +169,12 @@ export class AssetSyncManager extends Component {
                 this._finish(ok ? null : 'download', done);
             });
         });
+    }
+
+    /** Append ?t=epoch (or &t=) so itch / CDN / browser do not serve a stale manifest. */
+    private static _withCacheBust(url: string): string {
+        const sep = url.indexOf('?') >= 0 ? '&' : '?';
+        return `${url}${sep}t=${Date.now()}`;
     }
 
     /**
@@ -437,7 +474,8 @@ export class AssetSyncManager extends Component {
             if (this._looksLikeMod(data) || name.includes('mod') || item.kind === 'mod') {
                 this._upsertMod(data as ModConfig);
                 StorageManager.writeTextFile(`${CACHE_DIR}/mods/_bundle_${this._safe(item.filename)}.json`, body);
-                GameLogicInterpreter.getOrCreate().load(data as ModConfig);
+                // CDN mod packs: pipelines only — never stamp Scratch over Ladder/campaign
+                GameLogicInterpreter.getOrCreate().load(data as ModConfig, false);
                 return true;
             }
             StorageManager.writeTextFile(`${CACHE_DIR}/${this._safe(item.filename)}`, body);

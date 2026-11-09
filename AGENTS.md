@@ -6,7 +6,7 @@ This repository contains small game projects. `CoinDuel2D/` is a Cocos Creator 3
 
 ### Web-first Mod workflow (80/20)
 
-- **Web editor (~80% of creation):** `CoinDuel2D/tools/blockly-public/` — live at https://glitchy-veil-4s4chq7.shipstatic.com/ . Authors `ModConfig` / `COINMOD1` packs: levels, rules, physics, memes, `uiStrings`. Live preview aims/bounces without opening Creator.
+- **Web editor (~80% of creation):** `CoinDuel2D/tools/blockly-public/` (dev) and `docs/` (GitHub Pages publish). Permanent URL after Pages is on: https://meyyds34555343.github.io/LiteProjects/ . Do not host the editor on jsDelivr (raw source only). Shipstatic demos work but URLs change each deploy. Authors `ModConfig` / `COINMOD1` packs: levels, rules, physics, memes, `uiStrings`. Live preview aims/bounces without opening Creator.
 - **CDN data:** repo `/cdn` — memes, textures, levels; hash-diff via `AssetSyncManager`. See [cdn/README.md](cdn/README.md).
 - **Cocos runtime (~20% engine):** executes packs via `GameLogicInterpreter` + `ModAutoBoot` (`?mod=` / `?modUrl=` / localStorage). Prefer Scratch level when present. New behaviors/opcodes still require TypeScript in Creator.
 - **Share contract:** `COINMOD1:` + base64 JSON (`ModConfigSchema.ts`). Do not embed large PNGs in share codes — reference CDN `memeId`s.

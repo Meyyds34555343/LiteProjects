@@ -100,18 +100,31 @@ export class TutorialManager extends Component {
 
         // 解析拖拽步骤索引为 Node 引用（硬币销毁后索引会变，必须用引用）
         const coins = this.gameLogic?.coinGroup?.children ?? [];
-        this._steps = steps.map(s => {
+        const lastIndex = Math.max(0, coins.length - 1);
+        const resolved: ResolvedStep[] = [];
+        for (const s of steps) {
             if (s.type === 'intro') {
-                return { type: 'intro', hintKey: s.hintKey, x: s.x, y: s.y, radius: s.radius };
+                resolved.push({ type: 'intro', hintKey: s.hintKey, x: s.x, y: s.y, radius: s.radius });
+                continue;
             }
-            return {
+            // 关卡硬币数量与配置不一致时，夹紧索引而不是让教程卡死
+            const source = coins[Math.min(Math.max(0, s.sourceCoinIndex), lastIndex)];
+            const target = coins[Math.min(Math.max(0, s.targetCoinIndex), lastIndex)];
+            if (!source || !target || source === target) continue;
+            resolved.push({
                 type: 'drag',
                 hintKey: s.hintKey,
-                sourceCoin: coins[s.sourceCoinIndex],
-                targetCoin: coins[s.targetCoinIndex],
+                sourceCoin: source,
+                targetCoin: target,
                 isFinal: s.isFinal ?? false,
-            };
-        });
+            });
+        }
+        this._steps = resolved;
+
+        if (this._steps.length === 0) {
+            this.skipTutorial();
+            return;
+        }
 
         this._bindSkipButton();
         this._showSkipButton();
@@ -276,11 +289,15 @@ export class TutorialManager extends Component {
 
     /** 开始介绍步骤：显示指示器 + 文字，自动/点击推进 */
     private _beginIntroStep(step: IntroStep): void {
-        // 显示目标指示器
+        // 显示目标指示器（radius <= 0 表示纯文字目标说明，不显示指示器）
         const indicator = this.uiManager?.targetIndicator;
         if (indicator) {
-            indicator.node.setPosition(step.x, step.y, 0);
-            indicator.open(step.radius);
+            if (step.radius > 0) {
+                indicator.node.setPosition(step.x, step.y, 0);
+                indicator.open(step.radius);
+            } else {
+                indicator.close();
+            }
         }
 
         // 显示提示文字
@@ -297,7 +314,16 @@ export class TutorialManager extends Component {
     /** 开始拖拽步骤：高亮硬币 + 显示手势提示 + 目标指示器 */
     private _beginDragStep(step: ResolvedDragStep): void {
         const { sourceCoin, targetCoin } = step;
-        if (!sourceCoin || !sourceCoin.isValid || !targetCoin || !targetCoin.isValid) return;
+        // 硬币已在上一击被打飞（例如教程中途状态丢失）→ 跳过该步，避免教程卡死
+        if (!sourceCoin || !sourceCoin.isValid || !targetCoin || !targetCoin.isValid) {
+            if (this._currentStepIndex < this._steps.length - 1) {
+                this._currentStepIndex++;
+                this._beginCurrentStep();
+            } else {
+                this.skipTutorial();
+            }
+            return;
+        }
 
         // 高亮源硬币
         this._clearCoinHighlight();

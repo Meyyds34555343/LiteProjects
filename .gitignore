@@ -96,6 +96,12 @@ CoinDuel2D/native
 #///////////////////////////
 **/*.pyc
 #//////////////////////////
+# itch.io upload bundles (built artifacts, re-zipped on demand)
+#//////////////////////////
+itch-build/
+CoinDuel2D/itch-build/
+
+#//////////////////////////
 # NPM
 #//////////////////////////
 CoinDuel2D/node_modules/

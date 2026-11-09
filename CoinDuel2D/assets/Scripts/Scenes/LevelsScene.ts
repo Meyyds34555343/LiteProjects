@@ -1,65 +1,113 @@
-import { _decorator, Component, Node, instantiate, Prefab, Label, Button, director } from 'cc';
+import { _decorator, Component, Node, instantiate, Prefab, Label, Button, director, UITransform } from 'cc';
 import { LevelManager } from '../LevelManager';
 import { LevelData, LevelState } from '../LevelData';
 import { DataProvider } from '../DataProvider';
-import { UILevelItem } from '../UI/UILevelItem';
+import { UIStageItem } from '../UI/UIStageItem';
 import { SoundManager } from '../SoundManager';
+import { CampaignProgress } from '../Campaign/CampaignProgress';
+import { CdnLevelSource } from '../Campaign/CdnLevelSource';
+
 const { ccclass, property } = _decorator;
 
+/**
+ * Stage select (闖關模式).
+ *
+ * Responsibilities:
+ *  - build the grid from `levels.json`
+ *  - translate campaign progress (stars / best score) into lock states
+ *  - reload states every time the scene is re-enabled (after a win / retry)
+ *
+ * Uses `UIStageItem` when present on the prefab, otherwise falls back to the
+ * legacy `UILevelItem` / plain Label so old prefabs keep working.
+ */
 @ccclass('LevelsScene')
 export class LevelsScene extends Component {
     @property(Prefab)
     levelButtonPrefab: Prefab = null!;
+
     @property(Button)
     backButton: Button = null!;
 
     @property(Node)
     levelsContainer: Node = null!;
 
+    /** Columns in the grid. 3 matches the 640x512 scroll content of the scene. */
+    @property
+    public columns: number = 3;
+
+    /** Horizontal / vertical spacing between stage buttons. */
+    @property
+    public cellSpacingX: number = 168;
+    @property
+    public cellSpacingY: number = 150;
+
     private _levelFiles: string[] = [];
+    private _items: Node[] = [];
+    private _built = false;
 
     private _loadLevelAndGo(levelFile: string, index: number): void {
-        // 只有 Unlocked 状态的关卡才能进入
-        const state = LevelManager.getLevelState(index);
-        if (state === LevelState.Locked) return;
+        // Campaign stages: unlock rule comes from saved stars, not raw index.
+        const stageId = index + 1;
+        if (!CampaignProgress.isUnlocked(stageId)) {
+            return;
+        }
 
-        const path = 'levels/' + levelFile.replace('.json', '');
-        DataProvider.loadJson(path, (err, data) => {
-            if (err) {
-                console.error(`Failed to load ${path}:`, err);
-                return;
-            }
-            const levelData = data as LevelData;
+        const go = (levelData: LevelData) => {
             LevelManager.setLevelList(this._levelFiles, index);
             LevelManager.setCurrent(levelData);
             director.loadScene('game');
+        };
+
+        // CDN wins when the web editor has saved this stage (no rebuild needed).
+        CdnLevelSource.load(stageId, (remote) => {
+            if (remote) {
+                go(remote);
+                return;
+            }
+            const path = 'levels/' + levelFile.replace('.json', '');
+            DataProvider.loadJson(path, (err, data) => {
+                if (err) {
+                    console.error(`Failed to load ${path}:`, err);
+                    return;
+                }
+                go(data as LevelData);
+            });
         });
     }
 
-    onLoad(){
-        this.backButton.node.on(Button.EventType.CLICK, () => {
-            director.loadScene('main');
-        });
+    onLoad(): void {
+        if (this.backButton?.node) {
+            this.backButton.node.on(Button.EventType.CLICK, () => {
+                director.loadScene('main');
+            });
+        }
     }
 
-    start() {
+    start(): void {
         this.loadLevels();
         SoundManager.instance?.stopBGM();
     }
 
-    /** 刷新所有关卡项的显示状态 */
+    /** Re-apply lock / star visuals (cheap; no re-instantiation). */
     private _refreshLevelStates(): void {
-        const states = LevelManager.getLevelStates();
-        for (let i = 0; i < this.levelsContainer.children.length; i++) {
-            const child = this.levelsContainer.children[i];
-            const item = child.getComponent(UILevelItem);
-            if (item) {
-                item.setLevel(i + 1, states[i] ?? LevelState.Locked);
-            }
+        for (let i = 0; i < this._items.length; i++) {
+            const node = this._items[i];
+            if (!node?.isValid) continue;
+            const stageId = i + 1;
+            const state = CampaignProgress.getStars(stageId) > 0
+                ? LevelState.Passed
+                : (CampaignProgress.isUnlocked(stageId) ? LevelState.Unlocked : LevelState.Locked);
+
+            const stageItem = node.getComponent(UIStageItem) ?? node.addComponent(UIStageItem);
+            stageItem.setStage(stageId, state);
         }
     }
 
-    loadLevels() {
+    loadLevels(): void {
+        if (this._built) {
+            this._refreshLevelStates();
+            return;
+        }
         DataProvider.loadJson('levels', (err, data) => {
             if (err) {
                 console.error('Failed to load levels.json:', err);
@@ -68,44 +116,72 @@ export class LevelsScene extends Component {
             const list = data as { levels: string[] };
             this._levelFiles = list.levels;
 
-            // 初始化关卡状态（第一个自动解锁）
+            // Initialize LevelManager states, then overlay campaign progress.
             LevelManager.setLevelList(this._levelFiles, 0);
+            CampaignProgress.applyToLevelManager();
 
-            for (let i = 0; i < list.levels.length; i++) {
+            // Clear any previous instances (scene reload safety).
+            this.levelsContainer.removeAllChildren();
+            this._items = [];
+
+            const total = list.levels.length;
+            const cols = Math.max(1, this.columns);
+            const rows = Math.ceil(total / cols);
+            const contentHeight = Math.max(0, (rows - 1) * this.cellSpacingY);
+            const startY = contentHeight / 2;
+
+            for (let i = 0; i < total; i++) {
                 const levelFile = list.levels[i];
                 const btn = instantiate(this.levelButtonPrefab);
                 btn.name = levelFile;
                 this.levelsContainer.addChild(btn);
 
-                const idx = i;
+                // Grid placement keeps the scroll content vertically centred.
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                const rowCount = (row === rows - 1) ? (total - row * cols) : cols;
+                const x = (col - (rowCount - 1) / 2) * this.cellSpacingX;
+                const y = startY - row * this.cellSpacingY;
+                btn.setPosition(x, y, 0);
 
-                // 使用 UILevelItem 设置关卡编号和状态
-                const item = btn.getComponent(UILevelItem);
-                if (item) {
-                    const state = LevelManager.getLevelState(idx);
-                    item.setLevel(idx + 1, state);
-                } else {
-                    // 兼容：没有 UILevelItem 时回退到 Label 设置
-                    const labelNode = btn.getChildByName('Label');
-                    if (labelNode) {
-                        const label = labelNode.getComponent(Label);
-                        if (label) label.string = `${i + 1}`;
-                    }
-                }
+                const stageId = i + 1;
+                const state = CampaignProgress.getStars(stageId) > 0
+                    ? LevelState.Passed
+                    : (CampaignProgress.isUnlocked(stageId) ? LevelState.Unlocked : LevelState.Locked);
+
+                // Self-attach on the instantiated button: no prefab editing needed.
+                const stageItem = btn.getComponent(UIStageItem) ?? btn.addComponent(UIStageItem);
+                stageItem.setStage(stageId, state);
 
                 const button = btn.getComponent(Button);
                 if (button) {
+                    const idx = i;
                     btn.on(Button.EventType.CLICK, () => {
                         this._loadLevelAndGo(levelFile, idx);
                     }, this);
                 }
+
+                this._items.push(btn);
             }
+
+            // Scroll content must grow to fit the new rows.
+            const contentTransform = this.levelsContainer.getComponent(UITransform);
+            if (contentTransform) {
+                const colsWidth = cols * this.cellSpacingX;
+                contentTransform.setContentSize(
+                    Math.max(contentTransform.width, colsWidth),
+                    Math.max(contentTransform.height, contentHeight + this.cellSpacingY),
+                );
+            }
+
+            this._built = true;
         });
     }
 
-    /** 从 GameScene 返回时刷新关卡状态 */
-    onEnable() {
-        if (this.levelsContainer.children.length > 0) {
+    /** Returning from GameScene: refresh locks + stars immediately. */
+    onEnable(): void {
+        if (this._built) {
+            CampaignProgress.applyToLevelManager();
             this._refreshLevelStates();
         }
     }

@@ -1,0 +1,66 @@
+{
+  "name": "CoinDuel — Google Drive Delete → CDN",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "When a file is deleted from the Drive CDN folder, remove cdn/textures/{name} and drop it from cdn/manifest.json (same permanent jsDelivr URL)."
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "gd-del-001",
+      "name": "Google Drive Trigger (Deleted)",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute" }] },
+        "triggerOn": "specificFolder",
+        "event": "fileDeleted",
+        "folderToWatch": { "__rl": true, "mode": "list", "value": "" },
+        "options": {}
+      },
+      "notes": "Same Drive folder as the upload workflow. Event = File Deleted."
+    },
+    {
+      "id": "cfg-del-001",
+      "name": "Repo Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 0],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            { "id": "a1", "name": "owner", "value": "Meyyds34555343", "type": "string" },
+            { "id": "a2", "name": "repo", "value": "LiteProjects", "type": "string" },
+            { "id": "a3", "name": "branch", "value": "behavior-scratch", "type": "string" },
+            { "id": "a4", "name": "cdnPrefix", "value": "cdn", "type": "string" },
+            { "id": "a5", "name": "githubToken", "value": "", "type": "string" }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "code-del-001",
+      "name": "Delete Texture + Manifest Entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 0],
+      "parameters": {
+        "jsCode": "const cfg = $('Repo Config').first().json;\nconst drive = $('Google Drive Trigger (Deleted)').first().json;\nconst token = cfg.githubToken || $vars.GITHUB_PAT || $vars.githubToken || '';\nif (!token) throw new Error('Set Repo Config.githubToken');\n\nconst rawName = String(drive.name || drive.fileName || '');\nif (!rawName) throw new Error('Deleted Drive event missing file name');\nconst base = rawName.replace(/\\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase() || 'asset';\nconst ext = (rawName.match(/\\.([a-z0-9]+)$/i)?.[1] || 'png').toLowerCase();\nconst textureRel = `textures/${base}.${ext === 'jpeg' ? 'jpg' : ext}`;\nconst texturePath = `${cfg.cdnPrefix}/${textureRel}`;\nconst manifestPath = `${cfg.cdnPrefix}/manifest.json`;\n\nconst api = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents`;\nconst headers = {\n  Authorization: `Bearer ${token}`,\n  Accept: 'application/vnd.github+json',\n  'X-GitHub-Api-Version': '2022-11-28',\n  'User-Agent': 'n8n-coinduel-cdn-delete',\n};\n\nasync function getFile(path) {\n  const url = `${api}/${path}?ref=${encodeURIComponent(cfg.branch)}`;\n  const res = await this.helpers.httpRequest({ method: 'GET', url, headers, ignoreHttpStatusErrors: true });\n  if (res && res.sha) return res;\n  return null;\n}\n\nasync function deletePath(path, sha, message) {\n  const url = `${api}/${path}`;\n  return this.helpers.httpRequest({\n    method: 'DELETE',\n    url,\n    headers,\n    body: { message, sha, branch: cfg.branch },\n    json: true,\n    ignoreHttpStatusErrors: true,\n  });\n}\n\n// 1) Delete texture if present\nconst tex = await getFile.call(this, texturePath);\nlet deletedTexture = false;\nif (tex && tex.sha) {\n  await deletePath.call(this, texturePath, tex.sha, `cdn: delete ${textureRel} (removed from Google Drive)`);\n  deletedTexture = true;\n}\n\n// 2) Also try matching meme json (editor/n8n uploads)\nconst memePath = `${cfg.cdnPrefix}/memes/${base}.json`;\nconst memeFile = await getFile.call(this, memePath);\nlet deletedMemeJson = false;\nif (memeFile && memeFile.sha) {\n  await deletePath.call(this, memePath, memeFile.sha, `cdn: delete memes/${base}.json (removed from Google Drive)`);\n  deletedMemeJson = true;\n}\n\n// 3) Patch memes/index.json if present\nconst indexPath = `${cfg.cdnPrefix}/memes/index.json`;\nconst indexFile = await getFile.call(this, indexPath);\nif (indexFile && indexFile.content) {\n  try {\n    const text = Buffer.from(indexFile.content, 'base64').toString('utf8');\n    const idx = JSON.parse(text);\n    const list = Array.isArray(idx) ? idx : (idx.memes || idx.items || []);\n    const next = list.filter((m) => m && (m.id || m.memeId || m.name) !== base);\n    if (next.length !== list.length) {\n      const body = Array.isArray(idx) ? next : { ...idx, memes: next };\n      const b64 = Buffer.from(JSON.stringify(body, null, 2) + '\\n', 'utf8').toString('base64');\n      await this.helpers.httpRequest({\n        method: 'PUT',\n        url: `${api}/${indexPath}`,\n        headers,\n        body: { message: `cdn: drop ${base} from meme index`, content: b64, branch: cfg.branch, sha: indexFile.sha },\n        json: true,\n      });\n    }\n  } catch (_) {}\n}\n\n// 4) Remove from permanent manifest.json\nconst manFile = await getFile.call(this, manifestPath);\nif (!manFile || !manFile.content) {\n  return [{ json: { ok: true, deletedTexture, deletedMemeJson, note: 'manifest missing — nothing else to do', textureRel } }];\n}\nconst manText = Buffer.from(manFile.content, 'base64').toString('utf8');\nconst manifest = JSON.parse(manText);\nif (!Array.isArray(manifest.items)) manifest.items = [];\nconst before = manifest.items.length;\nmanifest.items = manifest.items.filter((it) => {\n  if (!it || !it.filename) return true;\n  if (it.filename === textureRel) return false;\n  if (it.filename === `memes/${base}.json`) return false;\n  return true;\n});\nmanifest.version = Number(manifest.version || 0) + 1;\nconst manB64 = Buffer.from(JSON.stringify(manifest, null, 2) + '\\n', 'utf8').toString('base64');\nawait this.helpers.httpRequest({\n  method: 'PUT',\n  url: `${api}/${manifestPath}`,\n  headers,\n  body: {\n    message: `cdn: bump manifest after deleting ${textureRel}`,\n    content: manB64,\n    branch: cfg.branch,\n    sha: manFile.sha,\n  },\n  json: true,\n});\n\nreturn [{\n  json: {\n    ok: true,\n    textureRel,\n    deletedTexture,\n    deletedMemeJson,\n    removedManifestItems: before - manifest.items.length,\n    manifestVersion: manifest.version,\n    note: 'jsDelivr may lag 1–5 min',\n  },\n}];"
+      }
+    }
+  ],
+  "connections": {
+    "Google Drive Trigger (Deleted)": {
+      "main": [[{ "node": "Repo Config", "type": "main", "index": 0 }]]
+    },
+    "Repo Config": {
+      "main": [[{ "node": "Delete Texture + Manifest Entry", "type": "main", "index": 0 }]]
+    }
+  }
+}

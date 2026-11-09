@@ -456,7 +456,8 @@ export class GameLogic extends Component {
         const sync = this.getComponent(AssetSyncManager) ?? this.addComponent(AssetSyncManager);
         sync.sync(() => {
             const remoteMod = sync.getMod();
-            if (remoteMod) this._mod?.load(remoteMod);
+            // Do not apply Scratch level from CDN mods during normal Ladder/campaign play
+            if (remoteMod) this._mod?.load(remoteMod, false);
             this._mod?.onGameStart();
         });
         this._mod?.onGameStart();

@@ -1,0 +1,176 @@
+{
+  "name": "CoinDuel — Google Drive → CDN Manifest",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "description": "Watch a Drive folder → upload PNG to cdn/textures → upsert same cdn/manifest.json on behavior-scratch (permanent jsDelivr URL)"
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "nodes": [
+    {
+      "id": "gd-trigger-001",
+      "name": "Google Drive Trigger",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "event": "fileCreated",
+        "folderToWatch": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "options": {}
+      },
+      "notes": "Set Folder to your CoinDuel CDN inbox. Duplicate this node (or add a second workflow) with event=fileUpdated if you also want overwrites."
+    },
+    {
+      "id": "cfg-001",
+      "name": "Repo Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [240, 0],
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "owner",
+              "value": "Meyyds34555343",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "repo",
+              "value": "LiteProjects",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "branch",
+              "value": "behavior-scratch",
+              "type": "string"
+            },
+            {
+              "id": "a4",
+              "name": "cdnPrefix",
+              "value": "cdn",
+              "type": "string"
+            },
+            {
+              "id": "a5",
+              "name": "githubToken",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "a6",
+              "name": "jsdelivrBase",
+              "value": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "dl-001",
+      "name": "Download File",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [480, 0],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.id }}"
+        },
+        "options": {
+          "binaryPropertyName": "data"
+        }
+      }
+    },
+    {
+      "id": "code-001",
+      "name": "Build CDN Paths + Manifest Item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 0],
+      "parameters": {
+        "jsCode": "/**\n * Drive file → CoinDuel CDN paths + one manifest item.\n * Permanent game URL never changes:\n * https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/manifest.json\n */\nconst cfg = $('Repo Config').first().json;\nconst drive = $('Google Drive Trigger').first().json;\nconst bin = $input.first().binary?.data;\nif (!bin) throw new Error('No binary from Drive download');\n\nconst rawName = String(drive.name || bin.fileName || 'asset.png');\nconst base = rawName.replace(/\\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase() || 'asset';\nconst ext = (rawName.match(/\\.([a-z0-9]+)$/i)?.[1] || 'png').toLowerCase();\nconst mime = String(drive.mimeType || bin.mimeType || 'application/octet-stream');\n\nconst isImage = /^image\\//i.test(mime) || /^(png|jpe?g|webp|gif)$/i.test(ext);\nif (!isImage) {\n  return [{ json: { skip: true, reason: `not an image: ${mime} ${rawName}` } }];\n}\n\nconst textureRel = `textures/${base}.${ext === 'jpeg' ? 'jpg' : ext}`;\nconst texturePath = `${cfg.cdnPrefix}/${textureRel}`;\nconst hash = `gdrive-${base}-${Date.now().toString(36)}`;\nconst permanentUrl = `${String(cfg.jsdelivrBase).replace(/\\/$/, '')}/${textureRel}`;\n\n// Game AssetManifest item (relative filename; base resolved from manifest URL dir)\nconst manifestItem = {\n  filename: textureRel,\n  hash,\n  kind: 'texture',\n  // optional absolute URL — AssetSync accepts either\n  url: permanentUrl,\n};\n\nreturn [{\n  json: {\n    skip: false,\n    owner: cfg.owner,\n    repo: cfg.repo,\n    branch: cfg.branch,\n    githubToken: cfg.githubToken || $vars.GITHUB_PAT || $vars.githubToken || '',\n    texturePath,\n    textureRel,\n    hash,\n    permanentUrl,\n    manifestPath: `${cfg.cdnPrefix}/manifest.json`,\n    manifestItem,\n    commitMessage: `cdn: sync ${textureRel} from Google Drive`,\n    driveFileId: drive.id,\n    driveName: rawName,\n  },\n  binary: {\n    data: bin,\n  },\n}];"
+      }
+    },
+    {
+      "id": "if-001",
+      "name": "Is Image?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [960, 0],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "code-upsert-001",
+      "name": "Upsert Texture + Manifest (GitHub Contents)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 0],
+      "parameters": {
+        "jsCode": "/**\n * Upsert (= GET sha → PUT same path) for:\n *   cdn/textures/{name}.png\n *   cdn/manifest.json   ← ALWAYS the same path (permanent jsDelivr link)\n */\nconst item = $input.first().json;\nconst bin = $input.first().binary?.data;\nif (!item.githubToken) throw new Error('Set Repo Config.githubToken (or $vars.GITHUB_PAT)');\nif (!bin?.data) throw new Error('Missing file binary');\n\nconst token = item.githubToken;\nconst api = `https://api.github.com/repos/${item.owner}/${item.repo}/contents`;\nconst headers = {\n  Authorization: `Bearer ${token}`,\n  Accept: 'application/vnd.github+json',\n  'X-GitHub-Api-Version': '2022-11-28',\n  'User-Agent': 'n8n-coinduel-cdn',\n};\n\nasync function getSha(path) {\n  const url = `${api}/${path}?ref=${encodeURIComponent(item.branch)}`;\n  const res = await this.helpers.httpRequest({ method: 'GET', url, headers, ignoreHttpStatusErrors: true });\n  if (res && res.sha) return res.sha;\n  return null;\n}\n\nasync function putFile(path, contentBase64, message, sha) {\n  const body = {\n    message,\n    content: contentBase64,\n    branch: item.branch,\n  };\n  if (sha) body.sha = sha; // required to OVERWRITE same path\n  const url = `${api}/${path}`;\n  return this.helpers.httpRequest({ method: 'PUT', url, headers, body, json: true });\n}\n\nasync function getJsonFile(path) {\n  const url = `${api}/${path}?ref=${encodeURIComponent(item.branch)}`;\n  const res = await this.helpers.httpRequest({ method: 'GET', url, headers, ignoreHttpStatusErrors: true });\n  if (!res || !res.content) return { sha: null, json: null };\n  const text = Buffer.from(res.content, 'base64').toString('utf8');\n  try {\n    return { sha: res.sha, json: JSON.parse(text) };\n  } catch {\n    return { sha: res.sha, json: null };\n  }\n}\n\n// 1) Upsert texture at FIXED path cdn/textures/...\nconst texSha = await getSha.call(this, item.texturePath);\nawait putFile.call(this, item.texturePath, bin.data, item.commitMessage, texSha);\n\n// 2) Load / create manifest, merge item by filename, upsert SAME manifest.json\nconst { sha: manSha, json: existing } = await getJsonFile.call(this, item.manifestPath);\nconst manifest = existing && typeof existing === 'object' ? existing : {\n  version: 1,\n  baseUrl: '',\n  memeConfig: 'memes/index.json',\n  items: [],\n};\nif (!Array.isArray(manifest.items)) manifest.items = [];\n\nconst idx = manifest.items.findIndex((x) => x && x.filename === item.manifestItem.filename);\nif (idx >= 0) manifest.items[idx] = { ...manifest.items[idx], ...item.manifestItem };\nelse manifest.items.push(item.manifestItem);\n\nmanifest.version = Number(manifest.version || 0) + 1;\n\nconst manB64 = Buffer.from(JSON.stringify(manifest, null, 2), 'utf8').toString('base64');\nawait putFile.call(\n  this,\n  item.manifestPath,\n  manB64,\n  `cdn: bump manifest for ${item.textureRel}`,\n  manSha,\n);\n\nreturn [{\n  json: {\n    ok: true,\n    texturePath: item.texturePath,\n    permanentTextureUrl: item.permanentUrl,\n    permanentManifestUrl: `${item.permanentUrl.replace(/\\/textures\\/.*$/, '')}/manifest.json`.replace(/cdn\\/cdn/, 'cdn') ||\n      `https://cdn.jsdelivr.net/gh/${item.owner}/${item.repo}@${item.branch}/cdn/manifest.json`,\n    manifestVersion: manifest.version,\n    itemCount: manifest.items.length,\n    note: 'jsDelivr may lag 1–5 min; game URL never changes',\n  },\n}];"
+      }
+    }
+  ],
+  "connections": {
+    "Google Drive Trigger": {
+      "main": [[{ "node": "Repo Config", "type": "main", "index": 0 }]]
+    },
+    "Repo Config": {
+      "main": [[{ "node": "Download File", "type": "main", "index": 0 }]]
+    },
+    "Download File": {
+      "main": [[{ "node": "Build CDN Paths + Manifest Item", "type": "main", "index": 0 }]]
+    },
+    "Build CDN Paths + Manifest Item": {
+      "main": [[{ "node": "Is Image?", "type": "main", "index": 0 }]]
+    },
+    "Is Image?": {
+      "main": [
+        [{ "node": "Upsert Texture + Manifest (GitHub Contents)", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  }
+}

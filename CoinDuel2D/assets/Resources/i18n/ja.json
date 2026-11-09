@@ -48,5 +48,21 @@
     "tutorial_skip": "チュートリアルをスキップ",
     "tutorial_complete": "チュートリアル完了！",
     "tutorial_block_intro": "これは障害物です！コインは跳ね返るので注意しましょう",
-    "tutorial_mud_intro": "これは泥沼です！コインが入ると減速します。注意しましょう"
+    "tutorial_mud_intro": "これは泥沼です！コインが入ると減速します。注意しましょう",
+
+    "stage_1_name": "ステージ1 · 基本操作",
+    "stage_2_name": "ステージ2 · 障害物",
+    "stage_3_name": "ステージ3 · コンボ",
+    "stage_4_name": "ステージ4 · ミニボス",
+    "tutorial_l1_intro": "目標：コインを弾き飛ばし、テーブルに1枚だけ残す",
+    "tutorial_l1_drag_a": "光っているコインをドラッグして右のコインに当てましょう",
+    "tutorial_l1_drag_b": "いい調子！もう1枚当てて、最後の1枚だけにしましょう",
+    "tutorial_l2_intro": "目標：中央の障害物を避けてコインを弾き飛ばす",
+    "tutorial_l2_drag_a": "障害物に当たると跳ね返ります。角度を変えて狙いましょう",
+    "tutorial_l3_intro": "目標：連続ヒットでスコア倍率が上がる",
+    "tutorial_l3_drag_a": "まず中央のコインに当ててコンボを開始",
+    "tutorial_l3_drag_b": "コンボ中にもう1枚当てるとスコアが伸びます",
+    "tutorial_l4_intro": "ミニボス：障害物を避けてコインを全部消す",
+    "tutorial_l4_drag_a": "1撃目：左のコインを右のコインに当てる",
+    "tutorial_l4_drag_b": "最後の1撃：テーブルを空にすればチュートリアル完了"
 }

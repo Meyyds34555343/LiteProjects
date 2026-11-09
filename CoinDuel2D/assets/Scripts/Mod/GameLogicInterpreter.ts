@@ -91,7 +91,10 @@ export class GameLogicInterpreter {
         return this._mod?.physics ?? DEFAULT_PHYSICS;
     }
 
-    public load(mod: ModConfig | null): void {
+    /**
+     * @param applyLevel When false, keep pipelines/physics only — do not overwrite campaign/ladder LevelManager state.
+     */
+    public load(mod: ModConfig | null, applyLevel: boolean = true): void {
         this._mod = mod;
         this._vars.clear();
         this._started = false;
@@ -106,7 +109,7 @@ export class GameLogicInterpreter {
         try {
             sysLocalSet(STORAGE_KEY, JSON.stringify(mod));
         } catch { /* ignore */ }
-        if (mod.level) {
+        if (applyLevel && mod.level) {
             try {
                 LevelManager.setScratchLevel(mod.level as unknown as LevelData);
                 console.log('[Mod] Scratch level applied', mod.level.id, 'objects=', mod.level.coins?.length ?? 0);
@@ -118,17 +121,18 @@ export class GameLogicInterpreter {
     public loadFromShareCode(code: string): boolean {
         const mod = ModCompiler.fromShareCode(code);
         if (!mod) return false;
-        this.load(mod);
+        this.load(mod, true);
         return true;
     }
 
+    /** Restore pipelines from cache without forcing Scratch over Ladder/campaign. */
     public loadCached(): boolean {
         try {
             const raw = sysLocalGet(STORAGE_KEY);
             if (!raw) return false;
             const mod = JSON.parse(raw) as ModConfig;
             if (mod.schemaVersion !== 1) return false;
-            this.load(mod);
+            this.load(mod, false);
             return true;
         } catch {
             return false;

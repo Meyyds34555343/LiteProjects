@@ -66,6 +66,13 @@ export class LevelManager {
         return LevelManager._levelStates[index] ?? LevelState.Locked;
     }
 
+    /** 直接设置指定关卡状态（供战役进度 / 存档恢复使用） */
+    static setLevelState(index: number, state: LevelState): void {
+        if (index >= 0 && index < LevelManager._levelStates.length) {
+            LevelManager._levelStates[index] = state;
+        }
+    }
+
     /** 标记指定关卡为 Passed，并自动解锁下一关 */
     static markLevelPassed(index: number): void {
         if (index >= 0 && index < LevelManager._levelStates.length) {
