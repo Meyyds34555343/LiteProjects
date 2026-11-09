@@ -1,5 +1,5 @@
 {
-  "version": 9,
+  "version": 10,
   "baseUrl": "",
   "memeConfig": "memes/index.json",
   "levelConfig": "levels/demo_behavior.json",
@@ -59,6 +59,18 @@
       "hash": "gdrive-meme_04-mw8xc35a",
       "kind": "texture",
       "url": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/meme_04.png"
+    },
+    {
+      "filename": "textures/meme_05.png",
+      "hash": "gdrive-meme_05-mw8z9k3d",
+      "kind": "texture",
+      "url": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/meme_05.png"
+    },
+    {
+      "filename": "textures/meme_03.png",
+      "hash": "gdrive-meme_03-mw8z9k3d",
+      "kind": "texture",
+      "url": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/meme_03.png"
     }
   ]
 }
