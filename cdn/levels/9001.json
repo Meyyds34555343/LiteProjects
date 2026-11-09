@@ -25,14 +25,11 @@
             "behaviors": [
                 "FreezeBehavior"
             ],
-            "memeId": "demo_freeze",
             "skin": {
                 "default": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png",
-                "idle": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png",
-                "aim": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png",
-                "shot": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png",
-                "hitted": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png"
-            }
+                "idle": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_freeze.png"
+            },
+            "memeId": "demo_freeze"
         },
         {
             "type": "coin",
@@ -45,14 +42,11 @@
             "behaviors": [
                 "FlashStepBehavior"
             ],
-            "memeId": "demo_flash",
             "skin": {
                 "default": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png",
-                "idle": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png",
-                "aim": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png",
-                "shot": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png",
-                "hitted": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png"
-            }
+                "idle": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/demo_flash.png"
+            },
+            "memeId": "demo_flash"
         }
     ]
 }
