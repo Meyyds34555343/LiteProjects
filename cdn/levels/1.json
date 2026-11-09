@@ -2,11 +2,33 @@
     "id": 1,
     "width": 800,
     "height": 600,
-    "wall": { "thickness": 64 },
+    "wall": {
+        "thickness": 64
+    },
     "coins": [
-        { "type": "coin", "class": 1, "canshot": true, "x": -220, "y": 140 },
-        { "type": "coin", "class": 1, "canshot": true, "x": 0, "y": 190 },
-        { "type": "coin", "class": 1, "canshot": true, "x": 220, "y": 20 },
-        { "type": "coin", "class": 1, "canshot": true, "x": -60, "y": -180 }
+        {
+            "type": "coin",
+            "class": 1,
+            "x": -120,
+            "y": 0,
+            "canshot": true,
+            "radius": 32
+        },
+        {
+            "type": "coin",
+            "class": 1,
+            "x": 100,
+            "y": 0,
+            "canshot": false,
+            "radius": 32,
+            "memeId": "doge",
+            "skin": {
+                "default": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/doge.png",
+                "idle": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/doge.png",
+                "aim": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/doge.png",
+                "shot": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/doge.png",
+                "hitted": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/doge.png"
+            }
+        }
     ]
 }
