@@ -514,12 +514,8 @@
         || coins.some(function (c) { return c.canshot === true; });
       if (mod.level && coins.length && !hasStriker) errs.push('No striker (canshot coin) in level');
       if (!mod.win || !mod.win.length) errs.push('No WIN rule');
-      const known = window.__cdnMemeIds;
-      if (known && known.length) {
-        coins.forEach(function (c) {
-          if (c.memeId && known.indexOf(String(c.memeId)) < 0) errs.push('Unknown memeId: ' + c.memeId);
-        });
-      }
+      // Do not hard-fail on memeId: CDN catalog can lag jsDelivr; Drive may add textures only.
+      // Open Runtime loads absolute skin URLs regardless of memes/index.json.
       return errs;
     }
 
@@ -914,53 +910,92 @@
     document.getElementById('btnPrevPause').onclick = function () { simPlaying = false; };
     document.getElementById('btnPrevReset').onclick = function () { resetSimFromMod(liveMod); simPlaying = true; };
 
+    function bust(url) {
+      const sep = String(url).indexOf('?') >= 0 ? '&' : '?';
+      return url + sep + 't=' + Date.now();
+    }
+
+    function rememberMemeId(id, texUrl) {
+      id = String(id || '').trim();
+      if (!id) return;
+      if (!window.__cdnMemeIds) window.__cdnMemeIds = [];
+      if (window.__cdnMemeIds.indexOf(id) < 0) window.__cdnMemeIds.push(id);
+      if (texUrl && !memeAtlas[id]) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function () { memeAtlas[id] = img; };
+        img.src = bust(texUrl);
+      }
+    }
+
+    function addMemeCatalogButton(el, id, texUrl) {
+      id = String(id);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = id;
+      btn.style.cssText = 'margin:2px;padding:2px 6px;font-size:0.7rem;';
+      btn.onclick = function () {
+        const tops = workspace.getTopBlocks(true);
+        let target = null;
+        for (const t of tops) {
+          if (t.type === 'level_place' && t.getFieldValue('KIND') !== 'striker') { target = t; break; }
+        }
+        if (!target) {
+          target = workspace.newBlock('level_place');
+          target.initSvg(); target.render(); target.moveBy(420, 300);
+          target.setFieldValue('target', 'KIND');
+        }
+        target.setFieldValue(id, 'MEME');
+        scheduleLive();
+        setStatus('Applied memeId ' + id + ' to a place block.', 'ok');
+      };
+      el.appendChild(btn);
+      rememberMemeId(id, texUrl);
+    }
+
     function loadCdnCatalog() {
       const el = document.getElementById('memeCatalog');
       el.textContent = 'Loading CDN memes…';
-      fetch(CDN_MANIFEST).then(function (r) { return r.json(); }).then(function (man) {
+      // Cache-bust: jsDelivr often lags; Drive uploads may only add textures/* without memes/index.json
+      fetch(bust(CDN_MANIFEST)).then(function (r) { return r.json(); }).then(function (man) {
         const base = (man.baseUrl || CDN_MANIFEST.replace(/\/[^/]*$/, '/'));
         const memeItem = (man.items || []).find(function (i) { return i.kind === 'meme' && String(i.filename).indexOf('index') >= 0; })
           || (man.items || []).find(function (i) { return i.kind === 'meme'; });
         const memeUrl = man.memeConfig ? (base + man.memeConfig) : (memeItem ? base + memeItem.filename : base + 'memes/index.json');
-        return fetch(memeUrl).then(function (r) { return r.json(); }).then(function (idx) {
-          const list = Array.isArray(idx) ? idx : (idx.memes || idx.items || []);
-          const ids = [];
+        const idSet = {};
+
+        function finishUi() {
+          const ids = Object.keys(idSet).sort();
+          window.__cdnMemeIds = ids;
           el.innerHTML = '<strong style="color:#5ec8ff">CDN memes</strong> ';
+          ids.forEach(function (id) {
+            addMemeCatalogButton(el, id, idSet[id] || memeCdnTextureUrl(id));
+          });
+          if (!ids.length) el.textContent = 'CDN catalog empty — check manifest.';
+          else setStatus('CDN memes loaded: ' + ids.join(', '), 'ok');
+        }
+
+        // 1) Texture-only uploads (Google Drive path) count as known memeIds
+        (man.items || []).forEach(function (it) {
+          if (!it || !it.filename) return;
+          const m = String(it.filename).match(/^textures\/([^/]+)\.(png|jpe?g|webp|gif)$/i);
+          if (!m) return;
+          const id = m[1];
+          idSet[id] = it.url || (base + it.filename);
+        });
+
+        return fetch(bust(memeUrl)).then(function (r) { return r.json(); }).then(function (idx) {
+          const list = Array.isArray(idx) ? idx : (idx.memes || idx.items || []);
           list.forEach(function (m) {
             const id = m.id || m.memeId || m.name;
             if (!id) return;
-            ids.push(String(id));
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.textContent = id;
-            btn.style.cssText = 'margin:2px;padding:2px 6px;font-size:0.7rem;';
-            btn.onclick = function () {
-              const tops = workspace.getTopBlocks(true);
-              let target = null;
-              for (const t of tops) {
-                if (t.type === 'level_place' && t.getFieldValue('KIND') !== 'striker') { target = t; break; }
-              }
-              if (!target) {
-                target = workspace.newBlock('level_place');
-                target.initSvg(); target.render(); target.moveBy(420, 300);
-                target.setFieldValue('target', 'KIND');
-              }
-              target.setFieldValue(String(id), 'MEME');
-              scheduleLive();
-              setStatus('Applied memeId ' + id + ' to a place block.', 'ok');
-            };
-            el.appendChild(btn);
-            // warm atlas
-            const tex = m.textures && (m.textures.default || m.textures.idle);
-            if (tex) {
-              const img = new Image();
-              img.crossOrigin = 'anonymous';
-              img.onload = function () { memeAtlas[String(id)] = img; };
-              img.src = tex.indexOf('http') === 0 ? tex : (base + tex);
-            }
+            const tex = (m.textures && (m.textures.default || m.textures.idle)) || memeCdnTextureUrl(id);
+            idSet[String(id)] = tex.indexOf('http') === 0 ? tex : (base + tex);
           });
-          window.__cdnMemeIds = ids;
-          if (!ids.length) el.textContent = 'CDN catalog empty — check manifest.';
+          finishUi();
+        }).catch(function () {
+          // Index missing/stale — still show texture ids from manifest
+          finishUi();
         });
       }).catch(function () {
         el.textContent = 'CDN unreachable (offline ok). Meme picker disabled.';
@@ -1648,6 +1683,7 @@
       try {
         setStatus('Committing meme "' + form.memeId + '" via GitHub…');
         const data = await commitMemeToGit(form.memeId, form.behavior, form.file);
+        rememberMemeId(data.memeId, memeCdnTextureUrl(data.memeId));
         applyMemeIdToPlace(data.memeId);
         document.getElementById('io').value = JSON.stringify(data, null, 2);
         setStatus('Git committed meme "' + data.memeId + '" — Refresh catalog in ~1–5 min.', 'ok');
@@ -1698,6 +1734,7 @@
           throw new Error(err);
         }
         const id = (data && data.memeId) || form.memeId;
+        rememberMemeId(id, memeCdnTextureUrl(id));
         applyMemeIdToPlace(id);
         document.getElementById('io').value = data ? JSON.stringify(data, null, 2) : rawText;
         setStatus('n8n committed meme "' + id + '" — catalog may lag ~1–5 min on jsDelivr.', 'ok');
