@@ -506,6 +506,10 @@ export class CoinController extends Component {
             }
         }
 
+        // 拖拽一开始就隐藏目标箭头：玩家已经出手，箭头会干扰瞄准。
+        // （失败后由 TutorialManager 重新指回目标）
+        this._gameLogic?.tutorialManager?.hideTargetGuide();
+
         // 冻结物理，防止拖拽期间受物理影响
         if (this._rigidBody) {
             this._rigidBody.type = ERigidBody2DType.Static;

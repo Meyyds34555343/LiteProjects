@@ -208,8 +208,12 @@ export class TutorialManager extends Component {
         // 快照已在 onCoinDragStart 中记录
     }
 
-    /** 硬币碰撞时调用，验证是否击中目标 */
-    public onCoinHit(hitCoin: Node): void {
+    /** 隐藏目标指示箭头（CoinController 拖拽开始时调用，避免干扰瞄准）。 */
+    public hideTargetGuide(): void {
+        this._hideTargetIndicator();
+    }
+
+    /** 硬币碰撞时调用，验证是否击中目标 */    public onCoinHit(hitCoin: Node): void {
         if (!this._active) return;
         const step = this._steps[this._currentStepIndex];
         if (!step || step.type !== 'drag') return;
@@ -236,12 +240,15 @@ export class TutorialManager extends Component {
         const hitCount = this.gameLogic?.coinHitCount ?? 0;
         const fallCount = this.gameLogic?.coinFallCount ?? 0;
 
-        // 成功条件放松：只要目标被撞到、没有硬币掉出桌面就算过。
-        // 旧条件还要求 hitCount == 1（一次只能撞一枚），但撞到目标后目标自己
-        // 往往会再撞到别的硬币（连击），于是玩家明明打中了却被判 miss——
-        // 这正是「说我没打到，但我打到了」的原因。
-        if (this._hitTargetThisTurn && fallCount === 0) {
-            // ✅ 正确击中目标 → 继续正常结算（a 硬币被打飞消失）
+        // 成功条件：本回合撞到了硬币、且没有硬币掉出桌面。
+        // 之前要求必须精确命中「指定那一枚」目标币，但在物理弹球里，
+        // 球撞到哪一枚取决于角度、旋转和连锁反应，玩家很难精确复现，
+        // 于是经常出现「我明明撞到了却说我打错」的挫败感。
+        // 这一步的教学目的是「拖拽出手」，不是「精确打某枚」，所以放宽。
+        const hitSomething = this._hitTargetThisTurn || hitCount > 0;
+
+        if (hitSomething && fallCount === 0) {
+            // ✅ 撞到了硬币 → 继续正常结算（出手硬币被打飞消失）
             this._foulCount = 0;
             // 在推进索引之前，记录当前步是否为最终步
             this._wasLastStep = step.isFinal;
@@ -270,11 +277,14 @@ export class TutorialManager extends Component {
 
             if (fallCount > 0) {
                 this._showHint('tutorial_foul_fall');
-            } else if (hitCount > 0) {
-                // 撞到了硬币，但不是目标那枚 → 提示打错目标，而不是「没打到」
-                this._showHint('tutorial_wrong_target');
             } else {
+                // 没撞到任何硬币（空挥）
                 this._showHint('tutorial_miss');
+            }
+
+            // 失败后立刻把箭头指回目标，别让玩家在 2 秒空窗里看不到该打哪儿
+            if (step.targetCoin?.isValid) {
+                this._showTargetIndicator(step.targetCoin);
             }
 
             // 2秒后重新显示原始提示和手势
@@ -434,9 +444,13 @@ export class TutorialManager extends Component {
     /** 显示目标指示器，对准目标 */
     private _showTargetIndicator(targetCoin: Node): void {
         const indicator = this.uiManager?.targetIndicator;
-        if (!indicator) return;
+        if (!indicator) {
+            console.warn('[Tutorial] targetIndicator 未绑定，无法显示箭头');
+            return;
+        }
         indicator.node.setPosition(targetCoin.position);
         indicator.open(this.gameLogic?.coinRadius ?? 32);
+        console.log('[Tutorial] indicator ->', targetCoin.name, '@', targetCoin.position.x, targetCoin.position.y);
     }
 
     /** 隐藏目标指示器 */
