@@ -47,6 +47,18 @@
         "default": "textures/meme_02.png",
         "idle": "textures/meme_02.png"
       }
+    },
+    {
+      "id": "doge",
+      "behavior": "NoneBehavior",
+      "behaviors": [
+        "NoneBehavior"
+      ],
+      "radius": 32,
+      "textures": {
+        "default": "textures/doge.png",
+        "idle": "textures/doge.png"
+      }
     }
   ]
 }
