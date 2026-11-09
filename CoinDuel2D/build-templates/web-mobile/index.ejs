@@ -2,47 +2,176 @@
 <html>
 <head>
   <meta charset="utf-8">
-
-  <title>Cocos Creator | <%= projectName %></title>
-
-  <!--http://www.html5rocks.com/en/mobile/mobifying/-->
+  <title>CoinDuel2D</title>
   <meta name="viewport"
         content="width=device-width,user-scalable=no,initial-scale=1,minimum-scale=1,maximum-scale=1,minimal-ui=true"/>
-
-  <!--https://developer.apple.com/library/safari/documentation/AppleApplications/Reference/SafariHTMLRef/Articles/MetaTags.html-->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="format-detection" content="telephone=no">
-
-  <!-- force webkit on 360 -->
   <meta name="renderer" content="webkit"/>
   <meta name="force-rendering" content="webkit"/>
-  <!-- force edge on IE -->
   <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
-  <meta name="msapplication-tap-highlight" content="no">
-
-  <!-- force full screen on some browser -->
+  <meta name="msapplication-tap-highlight" content="no"/>
   <meta name="full-screen" content="yes"/>
   <meta name="x5-fullscreen" content="true"/>
   <meta name="360-fullscreen" content="true"/>
-
-  <!--fix fireball/issues/3568 -->
-  <!--<meta name="browsermode" content="application">-->
-  <meta name="x5-page-mode" content="app">
-
-  <!--<link rel="apple-touch-icon" href=".png" />-->
-  <!--<link rel="apple-touch-icon-precomposed" href=".png" />-->
-
-  <link rel="stylesheet" type="text/css" href="<%= cssUrl %>"/>
-
+  <meta name="x5-page-mode" content="app"/>
+  <link rel="stylesheet" type="text/css" href="style.css"/>
+  <style>
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: #111; overflow: hidden;
+      font-family: Segoe UI, Roboto, sans-serif;
+    }
+    #GameDiv, #Cocos3dGameContainer, #GameCanvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+      min-width: 320px;
+      min-height: 240px;
+    }
+    #bootOverlay {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: #141414; color: #eee; gap: 16px; text-align: center;
+    }
+    #bootOverlay button {
+      appearance: none; border: 0; border-radius: 999px;
+      padding: 14px 28px; font-size: 18px; font-weight: 700;
+      background: #5ec8ff; color: #102030; cursor: pointer;
+    }
+    #bootErr { color: #ff8a8a; max-width: 90%; font-size: 13px; white-space: pre-wrap; display: none; }
+  </style>
 </head>
 <body>
-  <div id="GameDiv" cc_exact_fit_screen="true">
-      <div id="Cocos3dGameContainer">
-        <canvas id="GameCanvas" oncontextmenu="event.preventDefault()" tabindex="99"></canvas>
-      </div>
+  <div id="bootOverlay">
+    <div style="font-size:28px;font-weight:800;letter-spacing:0.04em;">CoinDuel2D</div>
+    <div id="bootMsg">Click Play to start &middot; build 2026-11-09g</div>
+    <button id="bootBtn" type="button">Play</button>
+    <div id="bootErr"></div>
+  </div>
+
+  <!-- itch iframe: exact-fit often stays 0x0, so force a minimum size -->
+  <div id="GameDiv" cc_exact_fit_screen="false" style="width:100%;height:100%;min-width:320px;min-height:240px;">
+    <div id="Cocos3dGameContainer" style="width:100%;height:100%;min-width:320px;min-height:240px;">
+      <canvas id="GameCanvas" width="1280" height="720" oncontextmenu="event.preventDefault()" tabindex="99"></canvas>
     </div>
-  <%- include(cocosTemplate, {}) %>
+  </div>
+
+  <script src="src/polyfills.bundle.js" charset="utf-8"></script>
+  <script src="src/system.bundle.js" charset="utf-8"></script>
+  <script src="src/import-map.json" type="systemjs-importmap" charset="utf-8"></script>
+  <script>
+    (function ingestModQuery() {
+      try {
+        var q = new URLSearchParams(location.search || '');
+        var raw = q.get('mod');
+        if (!raw) return;
+        raw = decodeURIComponent(raw.trim());
+        if (raw.indexOf('COINMOD1:') !== 0) return;
+        var json = decodeURIComponent(escape(atob(raw.slice(9))));
+        var mod = JSON.parse(json);
+        if (!mod || mod.schemaVersion !== 1) return;
+        localStorage.setItem('CoinDuel:activeMod', JSON.stringify(mod));
+        console.log('[boot] ingested ?mod=', mod.name || mod.id);
+      } catch (e) {
+        console.warn('[boot] ?mod= ingest failed', e);
+      }
+    })();
+  </script>
+  <script>
+    (function () {
+      var overlay = document.getElementById('bootOverlay');
+      var msg = document.getElementById('bootMsg');
+      var errBox = document.getElementById('bootErr');
+      var btn = document.getElementById('bootBtn');
+      var canvas = document.getElementById('GameCanvas');
+      var started = false;
+
+      function setMsg(t) {
+        msg.textContent = t;
+        console.log('[boot]', t);
+      }
+
+      function ensureCanvasSize() {
+        try {
+          var parent = document.getElementById('GameDiv') || document.body;
+          var rect = parent.getBoundingClientRect();
+          var w = Math.max(rect.width || 0, window.innerWidth || 0, 960) | 0;
+          var h = Math.max(rect.height || 0, window.innerHeight || 0, 540) | 0;
+          canvas.style.width = w + 'px';
+          canvas.style.height = h + 'px';
+          if (!canvas.width || canvas.width < 64) canvas.width = w;
+          if (!canvas.height || canvas.height < 64) canvas.height = h;
+        } catch (_) {}
+      }
+
+      function showErr(e) {
+        var text = (e && (e.stack || e.message || String(e))) || 'Unknown boot error';
+        console.error('[boot] FAIL', e);
+        errBox.style.display = 'block';
+        errBox.textContent = text;
+        setMsg('Failed to start &middot; build 2026-11-09g');
+        btn.style.display = 'inline-block';
+        btn.textContent = 'Retry';
+        overlay.style.display = 'flex';
+        started = false;
+      }
+
+      function hideOverlay() {
+        try {
+          overlay.style.setProperty('display', 'none', 'important');
+          overlay.style.visibility = 'hidden';
+          overlay.style.pointerEvents = 'none';
+          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+        } catch (_) {
+          overlay.style.display = 'none';
+        }
+        console.log('[boot] overlay removed');
+      }
+
+      function boot() {
+        if (started) return;
+        started = true;
+        setMsg('Loading… &middot; build 2026-11-09g');
+        btn.style.display = 'none';
+        errBox.style.display = 'none';
+        ensureCanvasSize();
+
+        System.import('./application.js').then(function (mod) {
+          setMsg('Engine init… &middot; build 2026-11-09g');
+          var application = new mod.Application();
+          return System.import('cc').then(function (engine) {
+            application.init(engine);
+            ensureCanvasSize();
+            return application.start().then(function () {
+              console.log('[boot] application.start resolved');
+              ensureCanvasSize();
+              var tries = 0;
+              (function waitScene() {
+                var scene = engine.director && engine.director.getScene && engine.director.getScene();
+                var ready = !!(scene && scene.children && scene.children.length > 0);
+                if (ready) {
+                  setMsg('Ready: ' + (scene.name || 'scene'));
+                  hideOverlay();
+                  return;
+                }
+                if (++tries < 100) {
+                  setTimeout(waitScene, 150);
+                  return;
+                }
+                showErr(new Error('Main scene failed to load. Try "Open in new window" on itch.'));
+              })();
+            });
+          });
+        }).catch(showErr);
+      }
+
+      btn.addEventListener('click', boot);
+      window.addEventListener('resize', ensureCanvasSize);
+      ensureCanvasSize();
+    })();
+  </script>
 </body>
 </html>
