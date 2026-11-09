@@ -42,6 +42,7 @@
     "tutorial_step_1": "拖動左邊的硬幣，擊打右上方的硬幣",
     "tutorial_step_2": "很好！繼續拖動硬幣，擊打下方的硬幣",
     "tutorial_wrong_coin": "請拖動指定的硬幣",
+    "tutorial_wrong_target": "打到別的硬幣了，試試撞向帶箭頭的硬幣",
     "tutorial_miss": "沒有擊中目標，再來一次",
     "tutorial_foul_fall": "硬幣掉出桌面了！請重新操作",
     "tutorial_foul_multi_hit": "撞到了多個硬幣！請重新操作",

@@ -214,8 +214,13 @@ export class TutorialManager extends Component {
         const step = this._steps[this._currentStepIndex];
         if (!step || step.type !== 'drag') return;
 
+        // 目标硬币被撞到 → 记录（用引用比对，硬币被打飞后索引会变）
         if (hitCoin === step.targetCoin) {
             this._hitTargetThisTurn = true;
+            console.log('[Tutorial] target hit:', hitCoin.name);
+        } else {
+            console.log('[Tutorial] hit a different coin:', hitCoin.name,
+                '(target was', step.targetCoin?.name + ')');
         }
     }
 
@@ -231,7 +236,11 @@ export class TutorialManager extends Component {
         const hitCount = this.gameLogic?.coinHitCount ?? 0;
         const fallCount = this.gameLogic?.coinFallCount ?? 0;
 
-        if (this._hitTargetThisTurn && fallCount == 0 && hitCount == 1) {
+        // 成功条件放松：只要目标被撞到、没有硬币掉出桌面就算过。
+        // 旧条件还要求 hitCount == 1（一次只能撞一枚），但撞到目标后目标自己
+        // 往往会再撞到别的硬币（连击），于是玩家明明打中了却被判 miss——
+        // 这正是「说我没打到，但我打到了」的原因。
+        if (this._hitTargetThisTurn && fallCount === 0) {
             // ✅ 正确击中目标 → 继续正常结算（a 硬币被打飞消失）
             this._foulCount = 0;
             // 在推进索引之前，记录当前步是否为最终步
@@ -261,8 +270,9 @@ export class TutorialManager extends Component {
 
             if (fallCount > 0) {
                 this._showHint('tutorial_foul_fall');
-            } else if (hitCount >= 2) {
-                this._showHint('tutorial_foul_multi_hit');
+            } else if (hitCount > 0) {
+                // 撞到了硬币，但不是目标那枚 → 提示打错目标，而不是「没打到」
+                this._showHint('tutorial_wrong_target');
             } else {
                 this._showHint('tutorial_miss');
             }

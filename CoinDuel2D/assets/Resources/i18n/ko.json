@@ -42,6 +42,7 @@
     "tutorial_step_1": "왼쪽 코인을 드래그해서 오른쪽 위 코인을 치세요",
     "tutorial_step_2": "잘했어요! 계속해서 코인을 드래그해서 아래쪽 코인을 치세요",
     "tutorial_wrong_coin": "지정된 코인을 드래그하세요",
+    "tutorial_wrong_target": "다른 코인에 부딪혔습니다. 화살표 코인을 노리세요",
     "tutorial_miss": "목표를 맞추지 못했습니다. 다시 시도하세요",
     "tutorial_foul_fall": "코인이 테이블에서 떨어졌습니다! 다시 시도하세요",
     "tutorial_foul_multi_hit": "여러 코인에 부딪혔습니다! 다시 시도하세요",
