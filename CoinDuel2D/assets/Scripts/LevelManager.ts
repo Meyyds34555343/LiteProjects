@@ -4,6 +4,12 @@ import { LevelData, LevelState } from './LevelData';
  * 跨场景传递关卡数据的静态管理器
  */
 export class LevelManager {
+    /** 關卡檔名 → DataProvider 路徑（兼容 `1.json` 與 `levels/1.json`）。 */
+    static toDataPath(file: string): string {
+        const clean = file.replace(/\.json$/i, '');
+        return clean.indexOf('levels/') === 0 ? clean : 'levels/' + clean;
+    }
+
     private static _current: LevelData | null = null;
     /** levels.json 中的文件列表 */
     private static _levelFiles: string[] = [];

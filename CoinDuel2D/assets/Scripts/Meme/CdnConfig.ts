@@ -1,5 +1,5 @@
 /**
- * Free remote CDN endpoints for AssetSync / MemeLoader.
+ * Free remote CDN endpoints for AssetSyncManager.
  *
  * DEFAULT: jsDelivr from this GitHub fork (behavior-scratch branch until merged to main).
  * Always use an absolute https URL — never relative paths or 127.0.0.1 (breaks on itch.io).

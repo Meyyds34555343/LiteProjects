@@ -6,7 +6,7 @@ import { UIStageItem } from '../UI/UIStageItem';
 import { SoundManager } from '../SoundManager';
 import { CampaignProgress } from '../Campaign/CampaignProgress';
 import { CdnLevelSource } from '../Campaign/CdnLevelSource';
-
+import { AssetSyncManager } from '../Meme/AssetSyncManager';
 const { ccclass, property } = _decorator;
 
 /**
@@ -47,6 +47,7 @@ export class LevelsScene extends Component {
     private _levelFiles: string[] = [];
     private _items: Node[] = [];
     private _built = false;
+    private _sync: AssetSyncManager | null = null;
 
     private _loadLevelAndGo(levelFile: string, index: number): void {
         // Campaign stages: unlock rule comes from saved stars, not raw index.
@@ -67,7 +68,7 @@ export class LevelsScene extends Component {
                 go(remote);
                 return;
             }
-            const path = 'levels/' + levelFile.replace('.json', '');
+            const path = LevelManager.toDataPath(levelFile);
             DataProvider.loadJson(path, (err, data) => {
                 if (err) {
                     console.error(`Failed to load ${path}:`, err);
@@ -111,74 +112,104 @@ export class LevelsScene extends Component {
             this._refreshLevelStates();
             return;
         }
-        DataProvider.loadJson('levels', (err, data) => {
-            if (err) {
-                console.error('Failed to load levels.json:', err);
+
+        // 優先從本地資產庫（manifest 同步結果）讀取關卡目錄
+        let manager = AssetSyncManager.instance;
+        if (!manager || !manager.isValid) {
+            manager = this.node.getComponent(AssetSyncManager)
+                ?? this.node.addComponent(AssetSyncManager);
+        }
+        const sync: AssetSyncManager = manager;
+        this._sync = sync;
+
+        sync.whenReady(() => {
+            const cached = sync.listCachedLevelFiles();
+            if (cached.length > 0) {
+                console.log('[Levels] 使用本地資產庫關卡:', cached.length);
+                this._renderLevels(cached);
                 return;
             }
-            const list = data as { levels: string[] };
-            this._levelFiles = list.levels;
-
-            // Initialize LevelManager states, then overlay campaign progress.
-            LevelManager.setLevelList(this._levelFiles, 0);
-            CampaignProgress.applyToLevelManager();
-
-            // Clear any previous instances (scene reload safety).
-            this.levelsContainer.removeAllChildren();
-            this._items = [];
-
-            const total = list.levels.length;
-            const cols = Math.max(1, this.columns);
-            const rows = Math.ceil(total / cols);
-            const contentHeight = Math.max(0, (rows - 1) * this.cellSpacingY);
-            const startY = contentHeight / 2;
-
-            for (let i = 0; i < total; i++) {
-                const levelFile = list.levels[i];
-                const btn = instantiate(this.levelButtonPrefab);
-                btn.name = levelFile;
-                this.levelsContainer.addChild(btn);
-
-                // Grid placement keeps the scroll content vertically centred.
-                const col = i % cols;
-                const row = Math.floor(i / cols);
-                const rowCount = (row === rows - 1) ? (total - row * cols) : cols;
-                const x = (col - (rowCount - 1) / 2) * this.cellSpacingX;
-                const y = startY - row * this.cellSpacingY;
-                btn.setPosition(x, y, 0);
-
-                const stageId = i + 1;
-                const state = CampaignProgress.getStars(stageId) > 0
-                    ? LevelState.Passed
-                    : (CampaignProgress.isUnlocked(stageId) ? LevelState.Unlocked : LevelState.Locked);
-
-                // Self-attach on the instantiated button: no prefab editing needed.
-                const stageItem = btn.getComponent(UIStageItem) ?? btn.addComponent(UIStageItem);
-                stageItem.setStage(stageId, state);
-
-                const button = btn.getComponent(Button);
-                if (button) {
-                    const idx = i;
-                    btn.on(Button.EventType.CLICK, () => {
-                        this._loadLevelAndGo(levelFile, idx);
-                    }, this);
+            console.log('[Levels] 本地資產庫沒有關卡，回退 levels.json');
+            DataProvider.loadJson('levels', (err, data) => {
+                if (err) {
+                    console.error('Failed to load levels.json:', err);
+                    return;
                 }
-
-                this._items.push(btn);
-            }
-
-            // Scroll content must grow to fit the new rows.
-            const contentTransform = this.levelsContainer.getComponent(UITransform);
-            if (contentTransform) {
-                const colsWidth = cols * this.cellSpacingX;
-                contentTransform.setContentSize(
-                    Math.max(contentTransform.width, colsWidth),
-                    Math.max(contentTransform.height, contentHeight + this.cellSpacingY),
-                );
-            }
-
-            this._built = true;
+                const list = data as { levels: string[] };
+                this._renderLevels(list.levels ?? []);
+            });
         });
+    }
+
+    private _renderLevels(files: string[]): void {
+        this._levelFiles = files;
+
+        // Initialize LevelManager states, then overlay campaign progress.
+        LevelManager.setLevelList(this._levelFiles, 0);
+        CampaignProgress.applyToLevelManager();
+
+        // Clear any previous instances (scene reload safety).
+        this.levelsContainer.removeAllChildren();
+        this._items = [];
+
+        const total = files.length;
+        const cols = Math.max(1, this.columns);
+        const rows = Math.ceil(total / cols);
+        const contentHeight = Math.max(0, (rows - 1) * this.cellSpacingY);
+        const startY = contentHeight / 2;
+
+        for (let i = 0; i < total; i++) {
+            const levelFile = files[i];
+            const btn = instantiate(this.levelButtonPrefab);
+
+            // 顯示關卡 JSON 裡的 id；回退 levels.json 時用檔名（去掉路徑與 .json）
+            const levelId = this._sync?.getLevelIdForFile(levelFile) ?? null;
+            const name = levelId != null
+                ? String(levelId)
+                : levelFile.replace(/^.*[\\/]/, '').replace(/\.json$/i, '');
+            // Node 名稱不能包含 '/'，保險再清理一次
+            btn.name = name.replace(/[\\/]/g, '_');
+            this.levelsContainer.addChild(btn);
+
+            // Grid placement keeps the scroll content vertically centred.
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const rowCount = (row === rows - 1) ? (total - row * cols) : cols;
+            const x = (col - (rowCount - 1) / 2) * this.cellSpacingX;
+            const y = startY - row * this.cellSpacingY;
+            btn.setPosition(x, y, 0);
+
+            const stageId = i + 1;
+            const state = CampaignProgress.getStars(stageId) > 0
+                ? LevelState.Passed
+                : (CampaignProgress.isUnlocked(stageId) ? LevelState.Unlocked : LevelState.Locked);
+
+            // Self-attach on the instantiated button: no prefab editing needed.
+            const stageItem = btn.getComponent(UIStageItem) ?? btn.addComponent(UIStageItem);
+            stageItem.setStage(stageId, state);
+
+            const button = btn.getComponent(Button);
+            if (button) {
+                const idx = i;
+                btn.on(Button.EventType.CLICK, () => {
+                    this._loadLevelAndGo(levelFile, idx);
+                }, this);
+            }
+
+            this._items.push(btn);
+        }
+
+        // Scroll content must grow to fit the new rows.
+        const contentTransform = this.levelsContainer.getComponent(UITransform);
+        if (contentTransform) {
+            const colsWidth = cols * this.cellSpacingX;
+            contentTransform.setContentSize(
+                Math.max(contentTransform.width, colsWidth),
+                Math.max(contentTransform.height, contentHeight + this.cellSpacingY),
+            );
+        }
+
+        this._built = true;
     }
 
     /** Returning from GameScene: refresh locks + stars immediately. */

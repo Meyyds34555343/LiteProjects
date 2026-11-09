@@ -30,4 +30,30 @@ export class NetworkManager {
         };
         xhr.send();
     }
+
+    /**
+     * 下载二进制资源（贴图 / 音效）。
+     * @param url 请求地址
+     * @param cb 回调：code 为 HTTP 状态码，data 为响应字节（失败时为 null）
+     */
+    public static HttpGetBinary(
+        url: string,
+        cb: (code: number, data: ArrayBuffer | null) => void,
+    ): void {
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.responseType = 'arraybuffer';
+        xhr.timeout = NetworkManager.TIMEOUT;
+        xhr.onload = () => {
+            const data = xhr.response as ArrayBuffer | null;
+            cb(xhr.status, data || null);
+        };
+        xhr.onerror = () => {
+            cb(0, null);
+        };
+        xhr.ontimeout = () => {
+            cb(0, null);
+        };
+        xhr.send();
+    }
 }

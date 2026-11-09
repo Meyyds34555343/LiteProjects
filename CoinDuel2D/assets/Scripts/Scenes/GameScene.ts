@@ -573,7 +573,7 @@ export class GameScene extends Component {
                     go(remote);
                     return;
                 }
-                const path = 'levels/' + levelFile.replace('.json', '');
+                const path = LevelManager.toDataPath(levelFile);
                 DataProvider.loadJson(path, (err, data) => {
                     if (err) {
                         console.error(`Failed to load next level ${path}:`, err);

@@ -4,15 +4,14 @@ import {
     Component,
     Node,
     Prefab,
+    Sprite,
     SpriteFrame,
-    sys,
 } from 'cc';
 import { NetworkManager } from '../NetworkManager';
 import { StorageManager } from '../StorageManager';
 import { CoinController } from '../CoinController';
 import {
     AssetManifest,
-    CachedHashMap,
     CoinConfig,
     CoinSkinConfig,
     isCoinConfig,
@@ -24,15 +23,13 @@ import {
 } from './MemeSchema';
 import { ModConfig } from '../Mod/ModConfigSchema';
 import { GameLogicInterpreter } from '../Mod/GameLogicInterpreter';
-import { DynamicAssetLoader, PRESET_COIN_SKINS } from './DynamicAssetLoader';
+import { DynamicAssetLoader, PRESET_COIN_SKINS, PRESET_SFX } from './DynamicAssetLoader';
 import { TableController } from '../TableController';
-import { Sprite } from 'cc';
-import { DEFAULT_CDN_MANIFEST_URL, resolveCdnManifestUrl } from './CdnConfig';
 
 const { ccclass, property } = _decorator;
 
-const HASH_KEY = 'AssetSync:hashes';
-const CACHE_DIR = 'assetsync';
+/** 本地缓存索引（相对 serverdata/），记录已下载文件的 filename + hash + kind。 */
+const CACHE_INDEX = 'asset-index.json';
 
 /** 避免與 GameLogic 循環引用；執行期傳入的就是 GameLogic。 */
 export interface LevelSpawnHost {
@@ -50,38 +47,71 @@ interface TexturePack {
     hitted: SpriteFrame | null;
 }
 
+interface CacheIndex {
+    version: number;
+    items: ManifestItem[];
+}
+
+/** 某個快取 JSON 檔載入過的內容 id，用於刪檔時同步清理記憶體。 */
+interface FileEntries {
+    memes: string[];
+    levels: number[];
+    mods: string[];
+}
+
 /**
- * 熱更新與增量下載。
- * 流程：拉 AssetManifest → 比 localStorage hash → 只抓變更的 JSON／貼圖／音效 →
- * 用 LevelConfig 動態生成 Coin.prefab，再把 Meme 五態貼到 Sprite。
+ * 資產熱更新與本地快取（專案唯一的遠端資產更新器）。
+ *
+ * 流程：拉 manifest.json → 逐項比對本地索引 hash → 只下載變更項 →
+ * JSON 寫入 serverdata/、貼圖音效寫入 IndexedDB（原生為檔案）→
+ * 移除伺服器已下架的本機檔案。
+ *
+ * 啟動時先從 serverdata/asset-index.json 還原快取，離線也能使用上次內容。
  */
 @ccclass('AssetSyncManager')
 export class AssetSyncManager extends Component {
     public static instance: AssetSyncManager | null = null;
 
     /**
-     * Remote AssetManifest URL. Must be absolute https (jsDelivr).
-     * Empty / relative / localhost is replaced by DEFAULT_CDN_MANIFEST_URL at sync time.
+     * 除錯開關：true 時打印 manifest 比對、下載、快取與清理的完整過程。
+     * 發佈前可改為 false，或於 Console 執行 `AssetSyncManager.verbose = false`。
      */
+    public static verbose = true;
+
+    /** 遠端 manifest URL。空字串＝只吃本地快取，不上網。 */
     @property
-    public manifestUrl: string = DEFAULT_CDN_MANIFEST_URL;
+    public manifestUrl = '';
 
     private _running = false;
+    private _ready = false;
+    private _readyCallbacks: (() => void)[] = [];
+
     private _memes = new Map<string, MemeConfig>();
     private _levels = new Map<number, LevelConfig>();
     private _mods = new Map<string, ModConfig>();
     private _frames = new Map<string, SpriteFrame>();
     private _clips = new Map<string, AudioClip>();
-    private _hashes: CachedHashMap = { version: 0, hashes: {} };
+
+    /** 已落盤的項目（key = 相對 filename）。 */
+    private _cacheItems = new Map<string, ManifestItem>();
+    /** 已落盤的貼圖 / 音效 filename。 */
+    private _cachedBinary = new Set<string>();
+    /** 已解析並載入記憶體的 JSON filename。 */
+    private _ingested = new Set<string>();
+    /** JSON filename → 該檔載入過的 meme / level / mod id。 */
+    private _fileEntries = new Map<string, FileEntries>();
+    private _cacheVersion = 0;
 
     protected onLoad(): void {
         AssetSyncManager.instance = this;
-        this._hashes = this._readHashes();
-        StorageManager.createDir(CACHE_DIR);
-        StorageManager.createDir(`${CACHE_DIR}/memes`);
-        StorageManager.createDir(`${CACHE_DIR}/levels`);
-        StorageManager.createDir(`${CACHE_DIR}/mods`);
-        this._hydrateFromDisk();
+        StorageManager.createDir(StorageManager.getCacheRoot());
+        this._log('onLoad: cache root =', StorageManager.getCacheRoot());
+        this._hydrateFromDisk(() => {
+            this._ready = true;
+            const callbacks = this._readyCallbacks;
+            this._readyCallbacks = [];
+            for (const cb of callbacks) cb();
+        });
     }
 
     protected onDestroy(): void {
@@ -100,6 +130,32 @@ export class AssetSyncManager extends Component {
         return Array.from(this._levels.values()).sort((a, b) => a.id - b.id);
     }
 
+    /**
+     * 本地資產庫中的關卡檔名（按 manifest / 快取索引順序）。
+     * 供關卡選擇畫面取代靜態 levels.json。
+     */
+    public listCachedLevelFiles(): string[] {
+        const files: string[] = [];
+        for (const [filename, item] of this._cacheItems) {
+            const kind = item.kind ?? this._guessKind(filename);
+            if (kind !== 'level') continue;
+            const entries = this._fileEntries.get(filename);
+            if (entries && entries.levels.length > 0) files.push(filename);
+        }
+        return files;
+    }
+
+    /** 某個關卡檔載入的第一個 LevelConfig.id；找不到時回傳 null。 */
+    public getLevelIdForFile(filename: string): number | null {
+        const entries = this._fileEntries.get(filename);
+        return entries && entries.levels.length > 0 ? entries.levels[0] : null;
+    }
+
+    /** 等本地快取還原完成後再讀取資料。 */
+    public whenReady(cb: () => void): void {
+        this._whenReady(cb);
+    }
+
     public getMod(id?: string): ModConfig | null {
         if (id) return this._mods.get(id) ?? null;
         const first = this._mods.values().next();
@@ -111,70 +167,44 @@ export class AssetSyncManager extends Component {
     }
 
     /**
-     * 對齊圖上的資產交互流程：
-     * Manifest → 比 hash → 增量下載 MemeConfig / LevelConfig / 貼圖音效。
-     * Always uses an absolute CDN URL (never relative / 127.0.0.1). Cache-busts with ?t=.
+     * Manifest → 比 hash → 增量下載 Meme / Level / Mod / 貼圖 / 音效。
+     * @param done 完成回調；err 為 null / 'network' / 'manifest' / 'download' / 'busy'
+     * @param progress 進度回調（已處理項數 / 總項數）
      */
-    public sync(done?: (err: string | null) => void): void {
-        const clean = resolveCdnManifestUrl(this.manifestUrl);
-        this.manifestUrl = clean;
-        if (this._running) {
-            console.warn('[AssetSync] sync already running');
-            done?.('busy');
-            return;
-        }
-        this._running = true;
-        const fetchUrl = AssetSyncManager._withCacheBust(clean);
-        console.log('[AssetSync] fetching manifest:', fetchUrl);
-        NetworkManager.HttpGet(fetchUrl, (code, body) => {
-            console.log(
-                '[AssetSync] manifest HTTP',
-                code,
-                'bytes=',
-                body ? body.length : 0,
-                'url=',
-                fetchUrl,
-            );
-            if (code !== 200 || !body) {
-                console.warn(
-                    '[AssetSync] manifest fetch failed — check itch Network tab for',
-                    fetchUrl,
-                    '| code=',
-                    code,
-                    '| bodyPreview=',
-                    (body || '').slice(0, 160),
-                );
-                this._finish('network', done);
+    public sync(
+        done?: (err: string | null) => void,
+        progress?: (completed: number, total: number) => void,
+    ): void {
+        this._whenReady(() => {
+            if (!this.manifestUrl) {
+                this._log('sync skipped: manifestUrl is empty (offline cache only)');
+                done?.(null);
                 return;
             }
-            const manifest = this._parseManifest(body);
-            if (!manifest) {
-                console.warn('[AssetSync] manifest JSON invalid. Preview:', body.slice(0, 200));
-                this._finish('manifest', done);
+            if (this._running) {
+                this._log('sync skipped: another sync is already running');
+                done?.('busy');
                 return;
             }
-            console.log(
-                '[AssetSync] manifest ok version=',
-                manifest.version,
-                'items=',
-                manifest.items?.length ?? 0,
-                'baseUrl=',
-                manifest.baseUrl || '(from manifest path)',
-            );
-            this._syncManifest(manifest, (ok) => {
-                if (ok) {
-                    this._hashes.version = manifest.version;
-                    this._writeHashes();
+            this._running = true;
+            this._log('sync start:', this.manifestUrl);
+            NetworkManager.HttpGet(this.manifestUrl, (code, body) => {
+                if (code !== 200 || !body) {
+                    console.warn('[AssetSync] manifest 請求失敗:', code, this.manifestUrl);
+                    this._finish('network', done);
+                    return;
                 }
-                this._finish(ok ? null : 'download', done);
+                const manifest = this._parseManifest(body);
+                if (!manifest) {
+                    this._finish('manifest', done);
+                    return;
+                }
+                this._log(`manifest v${manifest.version}: ${manifest.items.length} item(s)`);
+                this._syncManifest(manifest, (ok) => {
+                    this._finish(ok ? null : 'download', done);
+                }, progress);
             });
         });
-    }
-
-    /** Append ?t=epoch (or &t=) so itch / CDN / browser do not serve a stale manifest. */
-    private static _withCacheBust(url: string): string {
-        const sep = url.indexOf('?') >= 0 ? '&' : '?';
-        return `${url}${sep}t=${Date.now()}`;
     }
 
     /**
@@ -245,7 +275,7 @@ export class AssetSyncManager extends Component {
             shot: skin.shot ?? preset?.shot,
             hitted: skin.hitted ?? preset?.hitted,
         };
-        DynamicAssetLoader.loadSpriteSet(refs, (pack) => {
+        this._loadTextureSet(refs, (pack) => {
             const ctrl = coin.getComponent(CoinController);
             if (!ctrl?.isValid) {
                 // 無 CoinController 時直接套到 Sprite
@@ -269,8 +299,8 @@ export class AssetSyncManager extends Component {
                 finish();
                 return;
             }
-            DynamicAssetLoader.loadAudio(skin.shotSfx ?? '', (shot) => {
-                DynamicAssetLoader.loadAudio(skin.hittedSfx ?? '', (hit) => {
+            this._fetchAudio(skin.shotSfx ?? '', (shot) => {
+                this._fetchAudio(skin.hittedSfx ?? '', (hit) => {
                     if (!ctrl.isValid) {
                         finish();
                         return;
@@ -299,14 +329,14 @@ export class AssetSyncManager extends Component {
         };
         if (cfg.felt) {
             pending++;
-            DynamicAssetLoader.loadSprite(cfg.felt, (frame) => {
+            this._fetchTexture(cfg.felt, (frame) => {
                 table.applyFeltSkin(frame, cfg.tint);
                 tick();
             });
         }
         if (cfg.wall) {
             pending++;
-            DynamicAssetLoader.loadSprite(cfg.wall, (frame) => {
+            this._fetchTexture(cfg.wall, (frame) => {
                 table.applyWallSkin(frame);
                 tick();
             });
@@ -314,20 +344,14 @@ export class AssetSyncManager extends Component {
         if (pending === 0) done?.();
     }
 
-    /** 公開：依 hash URL / Base64 / preset 取 SpriteFrame。 */
+    /** 公開：依 URL / 相對路徑 / Base64 / preset 取 SpriteFrame。 */
     public loadSpriteHot(ref: string, done: (frame: SpriteFrame | null) => void): void {
-        DynamicAssetLoader.loadSprite(ref, (frame) => {
-            if (frame) this._frames.set(ref, frame);
-            done(frame);
-        });
+        this._fetchTexture(ref, done);
     }
 
-    /** 公開：依 hash URL / Base64 / preset 取 AudioClip。 */
+    /** 公開：依 URL / 相對路徑 / Base64 / preset 取 AudioClip。 */
     public loadAudioHot(ref: string, done: (clip: AudioClip | null) => void): void {
-        DynamicAssetLoader.loadAudio(ref, (clip) => {
-            if (clip) this._clips.set(ref, clip);
-            done(clip);
-        });
+        this._fetchAudio(ref, done);
     }
 
     /**
@@ -354,8 +378,8 @@ export class AssetSyncManager extends Component {
                 shotFrame: pack.shot ?? pack.default,
                 hittedFrame: pack.hitted ?? pack.default,
             });
-            this._loadOptionalClip(meme.shotSfx, (shot) => {
-                this._loadOptionalClip(meme.hittedSfx, (hit) => {
+            this._fetchAudioOptional(meme.shotSfx ?? '', (shot) => {
+                this._fetchAudioOptional(meme.hittedSfx ?? '', (hit) => {
                     if (!ctrl.isValid) {
                         done?.();
                         return;
@@ -373,141 +397,288 @@ export class AssetSyncManager extends Component {
 
     // ── sync internals ──
 
-    private _syncManifest(manifest: AssetManifest, done: (ok: boolean) => void): void {
-        const queue: ManifestItem[] = manifest.items.slice();
-        if (manifest.memeConfig) {
-            queue.push({ filename: manifest.memeConfig, hash: `meme-cfg-${manifest.version}`, kind: 'json' });
+    private _whenReady(cb: () => void): void {
+        if (this._ready) {
+            cb();
+            return;
         }
-        if (manifest.levelConfig) {
-            queue.push({ filename: manifest.levelConfig, hash: `level-cfg-${manifest.version}`, kind: 'json' });
-        }
-        if (manifest.modConfig) {
-            queue.push({ filename: manifest.modConfig, hash: `mod-cfg-${manifest.version}`, kind: 'mod' });
-        }
-        this._downloadQueue(manifest, queue, 0, true, done);
+        this._readyCallbacks.push(cb);
     }
 
-    private _downloadQueue(
+    private _syncManifest(
         manifest: AssetManifest,
-        queue: ManifestItem[],
-        index: number,
-        ok: boolean,
+        done: (ok: boolean) => void,
+        progress?: (completed: number, total: number) => void,
+    ): void {
+        const items = manifest.items.slice();
+        const oldItems = new Map(this._cacheItems);
+        const nextItems: ManifestItem[] = [];
+        const total = items.length;
+        let completed = 0;
+
+        this._log('compare: manifest =', total, ', local cache =', oldItems.size);
+
+        const report = () => progress?.(completed, total);
+        report();
+
+        const step = (index: number, ok: boolean) => {
+            if (index >= items.length) {
+                const keep = new Set<string>();
+                for (const item of items) keep.add(item.filename);
+
+                // 先移除索引中已知、但 manifest 已不存在的項目
+                let removed = 0;
+                for (const name of Array.from(oldItems.keys())) {
+                    if (!keep.has(name)) {
+                        this._deleteCached(name);
+                        removed++;
+                    }
+                }
+
+                this._cacheItems = new Map();
+                for (const item of nextItems) this._cacheItems.set(item.filename, item);
+                this._cacheVersion = manifest.version;
+
+                // 再掃描本地快取（IndexedDB / localStorage / 原生檔案），清掉索引外的孤兒條目
+                this._reconcileCache(keep, (extraRemoved) => {
+                    removed += extraRemoved;
+                    this._writeCacheIndex();
+                    this._log(
+                        `compare done: ${completed}/${total} processed,`,
+                        'removed=' + removed + ',',
+                        'cache=' + this._cacheItems.size,
+                    );
+                    done(ok);
+                });
+                return;
+            }
+
+            const item = items[index];
+            if (this._hashMatches(item) && this._isCached(item)) {
+                this._log('[skip]', item.filename, 'hash=' + item.hash, '(unchanged)');
+                nextItems.push(item);
+                this._ingestCached(item, () => {
+                    completed++;
+                    report();
+                    step(index + 1, ok);
+                });
+                return;
+            }
+
+            const cached = this._cacheItems.get(item.filename);
+            const reason = !cached ? 'new' : (!item.hash ? 'no-hash' : 'changed');
+            this._log(
+                `[download:${reason}]`,
+                item.filename,
+                'kind=' + (item.kind ?? this._guessKind(item.filename)),
+                'hash=' + item.hash,
+            );
+            this._downloadItem(manifest, item, (success) => {
+                if (success) {
+                    this._log('[ok]', item.filename);
+                    nextItems.push(item);
+                } else {
+                    // 下載失敗時保留舊快取，離線仍可玩；下次啟動會再試
+                    console.warn('[AssetSync] 下載失敗，保留舊快取:', item.filename);
+                    const old = oldItems.get(item.filename);
+                    if (old) nextItems.push(old);
+                }
+                completed++;
+                report();
+                step(index + 1, ok && success);
+            });
+        };
+
+        step(0, true);
+    }
+
+    private _downloadItem(
+        manifest: AssetManifest,
+        item: ManifestItem,
         done: (ok: boolean) => void,
     ): void {
-        if (index >= queue.length) {
-            done(ok);
-            return;
-        }
-        const item = queue[index];
-        const key = item.filename;
-        if (this._hashes.hashes[key] === item.hash && this._isCached(item)) {
-            this._ingestCached(item);
-            this._downloadQueue(manifest, queue, index + 1, ok, done);
-            return;
-        }
         const url = this._resolve(manifest, item);
         const kind = item.kind ?? this._guessKind(item.filename);
-        if (kind === 'texture') {
-            this._fetchTexture(url, (frame) => {
-                if (!frame) {
-                    this._downloadQueue(manifest, queue, index + 1, false, done);
-                    return;
-                }
-                this._frames.set(key, frame);
-                this._hashes.hashes[key] = item.hash;
-                this._downloadQueue(manifest, queue, index + 1, ok, done);
-            });
-            return;
-        }
-        if (kind === 'audio') {
-            this._fetchAudio(url, (clip) => {
-                if (!clip) {
-                    this._downloadQueue(manifest, queue, index + 1, false, done);
-                    return;
-                }
-                this._clips.set(key, clip);
-                this._hashes.hashes[key] = item.hash;
-                this._downloadQueue(manifest, queue, index + 1, ok, done);
-            });
+        this._log('[url]', item.filename, '→', url);
+        if (kind === 'texture' || kind === 'audio') {
+            this._downloadBinary(url, item, kind, done);
             return;
         }
         NetworkManager.HttpGet(url, (code, body) => {
             if (code !== 200 || !body) {
-                console.warn('[AssetSync] 下載失敗:', key);
-                this._downloadQueue(manifest, queue, index + 1, false, done);
+                console.warn('[AssetSync] 下載失敗:', item.filename, code);
+                done(false);
                 return;
             }
-            if (!this._ingestJson(item, body)) {
-                this._downloadQueue(manifest, queue, index + 1, false, done);
+            done(this._ingestJson(item, body));
+        });
+    }
+
+    private _downloadBinary(
+        url: string,
+        item: ManifestItem,
+        kind: 'texture' | 'audio',
+        done: (ok: boolean) => void,
+    ): void {
+        NetworkManager.HttpGetBinary(url, (code, bytes) => {
+            if (code !== 200 || !bytes) {
+                console.warn('[AssetSync] 下載失敗:', item.filename, code);
+                done(false);
                 return;
             }
-            this._hashes.hashes[key] = item.hash;
-            this._downloadQueue(manifest, queue, index + 1, ok, done);
+            const cachePath = this._cachePath(item.filename);
+            this._log('[bytes]', item.filename, bytes.byteLength + 'B →', cachePath);
+            StorageManager.writeBinaryFile(cachePath, bytes, (saved) => {
+                if (!saved) {
+                    console.warn('[AssetSync] 寫入快取失敗:', item.filename);
+                    done(false);
+                    return;
+                }
+                this._cachedBinary.add(item.filename);
+                const ext = kind === 'texture'
+                    ? this._imageExt(url || item.filename)
+                    : this._audioExt(url || item.filename);
+                const finish = (asset: SpriteFrame | AudioClip | null) => {
+                    if (!asset) {
+                        done(false);
+                        return;
+                    }
+                    if (kind === 'texture') this._frames.set(item.filename, asset as SpriteFrame);
+                    else this._clips.set(item.filename, asset as AudioClip);
+                    done(true);
+                };
+                if (kind === 'texture') {
+                    DynamicAssetLoader.loadSpriteFromBytes(cachePath, bytes, ext, finish);
+                } else {
+                    DynamicAssetLoader.loadAudioFromBytes(cachePath, bytes, ext, finish);
+                }
+            });
         });
     }
 
     private _ingestJson(item: ManifestItem, body: string): boolean {
+        let data: unknown;
         try {
-            const data = JSON.parse(body);
-            const name = item.filename.toLowerCase();
-            if (name.includes('meme') || Array.isArray((data as { memes?: unknown }).memes) || this._looksLikeMemeList(data)) {
-                this._ingestMemePayload(data);
-                StorageManager.writeTextFile(`${CACHE_DIR}/memes/_bundle_${this._safe(item.filename)}.json`, body);
-                return true;
-            }
-            if (name.includes('level') || this._looksLikeLevel(data) || Array.isArray((data as { levels?: unknown }).levels)) {
-                this._ingestLevelPayload(data);
-                StorageManager.writeTextFile(`${CACHE_DIR}/levels/_bundle_${this._safe(item.filename)}.json`, body);
-                return true;
-            }
-            // 單一 meme
-            if ((data as MemeConfig).id && (data as MemeConfig).textures) {
-                this._upsertMeme(data as MemeConfig);
-                StorageManager.writeJsonFile(`${CACHE_DIR}/memes/${this._safe((data as MemeConfig).id)}.json`, data);
-                return true;
-            }
-            if (this._looksLikeLevel(data)) {
-                this._upsertLevel(data as LevelConfig);
-                StorageManager.writeJsonFile(`${CACHE_DIR}/levels/${(data as LevelConfig).id}.json`, data);
-                return true;
-            }
-            if (this._looksLikeMod(data) || name.includes('mod') || item.kind === 'mod') {
-                this._upsertMod(data as ModConfig);
-                StorageManager.writeTextFile(`${CACHE_DIR}/mods/_bundle_${this._safe(item.filename)}.json`, body);
-                // CDN mod packs: pipelines only — never stamp Scratch over Ladder/campaign
-                GameLogicInterpreter.getOrCreate().load(data as ModConfig, false);
-                return true;
-            }
-            StorageManager.writeTextFile(`${CACHE_DIR}/${this._safe(item.filename)}`, body);
-            return true;
+            data = JSON.parse(body);
         } catch (e) {
             console.warn('[AssetSync] JSON 解析失敗:', item.filename, e);
             return false;
         }
-    }
-
-    private _ingestMemePayload(data: unknown): void {
-        const list = Array.isArray(data)
-            ? data
-            : Array.isArray((data as { memes?: unknown }).memes)
-                ? (data as { memes: MemeConfig[] }).memes
-                : null;
-        if (!list) return;
-        for (const raw of list) {
-            if (raw && typeof (raw as MemeConfig).id === 'string') this._upsertMeme(raw as MemeConfig);
+        const cachePath = this._cachePath(item.filename);
+        StorageManager.ensureDirFor(cachePath);
+        if (!StorageManager.writeTextFile(cachePath, body)) {
+            console.warn('[AssetSync] 寫入失敗:', item.filename);
+            return false;
         }
+        const entries = this._ingestPayload(item, data);
+        this._recordFileEntries(item.filename, entries);
+        this._ingested.add(item.filename);
+        this._log('[ingest]', item.filename, body.length + 'B');
+        return true;
     }
 
-    private _ingestLevelPayload(data: unknown): void {
-        if (this._looksLikeLevel(data)) {
-            this._upsertLevel(data as LevelConfig);
+    private _ingestPayload(item: ManifestItem, data: unknown): FileEntries {
+        const kind = item.kind ?? this._guessKind(item.filename);
+        if (kind === 'meme') {
+            return { memes: this._ingestMemePayload(data), levels: [], mods: [] };
+        }
+        if (kind === 'level') {
+            return { memes: [], levels: this._ingestLevelPayload(data), mods: [] };
+        }
+        if (kind === 'mod' || this._looksLikeMod(data)) {
+            const id = this._ingestMod(data);
+            return { memes: [], levels: [], mods: id ? [id] : [] };
+        }
+        // kind === 'json'：依內容嗅探（例如 levels.json / config.json / memes.json）
+        if (this._looksLikeMemePayload(data)) {
+            return { memes: this._ingestMemePayload(data), levels: [], mods: [] };
+        }
+        if (this._looksLikeLevelPayload(data)) {
+            return { memes: [], levels: this._ingestLevelPayload(data), mods: [] };
+        }
+        if (this._looksLikeMod(data)) {
+            const id = this._ingestMod(data);
+            return { memes: [], levels: [], mods: id ? [id] : [] };
+        }
+        return { memes: [], levels: [], mods: [] };
+    }
+
+    private _ingestCached(item: ManifestItem, done: () => void): void {
+        if (this._ingested.has(item.filename)) {
+            done();
             return;
         }
-        const list = (data as { levels?: LevelConfig[] }).levels;
-        if (!Array.isArray(list)) return;
-        for (const raw of list) {
-            if (this._looksLikeLevel(raw)) this._upsertLevel(raw);
+        const kind = item.kind ?? this._guessKind(item.filename);
+        if (kind === 'texture' || kind === 'audio') {
+            done();
+            return;
         }
+        StorageManager.readJsonFile(this._cachePath(item.filename), (err, data) => {
+            if (!err && data) {
+                const entries = this._ingestPayload(item, data);
+                this._recordFileEntries(item.filename, entries);
+                this._ingested.add(item.filename);
+                this._log('[restore]', item.filename);
+            } else {
+                this._log('[restore:miss]', item.filename, err ?? 'empty');
+            }
+            done();
+        });
+    }
+
+    private _ingestMemePayload(data: unknown): string[] {
+        const ids: string[] = [];
+        const add = (raw: unknown) => {
+            if (raw && typeof (raw as MemeConfig).id === 'string') {
+                const cfg = raw as MemeConfig;
+                this._upsertMeme(cfg);
+                ids.push(cfg.id);
+            }
+        };
+        if (Array.isArray(data)) {
+            for (const raw of data) add(raw);
+            return ids;
+        }
+        const list = (data as { memes?: unknown } | null)?.memes;
+        if (Array.isArray(list)) {
+            for (const raw of list) add(raw);
+            return ids;
+        }
+        const single = data as MemeConfig | null;
+        if (single && typeof single.id === 'string' && single.textures) add(single);
+        return ids;
+    }
+
+    private _ingestLevelPayload(data: unknown): number[] {
+        const ids: number[] = [];
+        const add = (raw: unknown) => {
+            if (this._looksLikeLevel(raw)) {
+                const level = raw as LevelConfig;
+                if (this._upsertLevel(level)) ids.push(level.id);
+            }
+        };
+        if (this._looksLikeLevel(data)) {
+            add(data);
+            return ids;
+        }
+        if (Array.isArray(data)) {
+            for (const raw of data) add(raw);
+            return ids;
+        }
+        const list = (data as { levels?: unknown } | null)?.levels;
+        if (Array.isArray(list)) {
+            for (const raw of list) add(raw);
+        }
+        return ids;
+    }
+
+    private _ingestMod(data: unknown): string | null {
+        if (!this._looksLikeMod(data)) return null;
+        const cfg = data as ModConfig;
+        const id = cfg.id || 'default';
+        this._mods.set(id, cfg);
+        GameLogicInterpreter.getOrCreate().load(cfg);
+        return id;
     }
 
     private _upsertMeme(cfg: MemeConfig): void {
@@ -515,44 +686,152 @@ export class AssetSyncManager extends Component {
         this._memes.set(cfg.id, cfg);
     }
 
-    private _upsertLevel(cfg: LevelConfig): void {
-        if (typeof cfg.id !== 'number' || !Array.isArray(cfg.coins)) return;
+    private _upsertLevel(cfg: LevelConfig): boolean {
+        if (typeof cfg.id !== 'number' || !Array.isArray(cfg.coins)) return false;
         this._levels.set(cfg.id, cfg);
+        return true;
     }
 
-    private _hydrateFromDisk(): void {
-        // 目錄列舉在 Web localStorage 上不可靠；依已存 hash 鍵還原已知 bundle 名稱困難。
-        // 啟動時仍以 sync() 為主；此處讀單一常見快取檔若存在。
-        StorageManager.readJsonFile(`${CACHE_DIR}/memes/index.json`, (err, data) => {
-            if (!err && data) this._ingestMemePayload(data);
+    /** 記錄某個 JSON 檔載入過的 id；同一檔案更新時合併，刪檔時才能完整清理。 */
+    private _recordFileEntries(filename: string, entries: FileEntries): void {
+        const prev = this._fileEntries.get(filename);
+        if (!prev) {
+            this._fileEntries.set(filename, entries);
+            return;
+        }
+        this._fileEntries.set(filename, {
+            memes: Array.from(new Set(prev.memes.concat(entries.memes))),
+            levels: Array.from(new Set(prev.levels.concat(entries.levels))),
+            mods: Array.from(new Set(prev.mods.concat(entries.mods))),
         });
-        StorageManager.readJsonFile(`${CACHE_DIR}/levels/index.json`, (err, data) => {
-            if (!err && data) this._ingestLevelPayload(data);
+    }
+
+    /** 從記憶體移除某檔案載入過的 meme / level / mod。 */
+    private _purgeFileEntries(filename: string): void {
+        const entries = this._fileEntries.get(filename);
+        if (!entries) return;
+        for (const id of entries.memes) this._memes.delete(id);
+        for (const id of entries.levels) this._levels.delete(id);
+        for (const id of entries.mods) {
+            this._mods.delete(id);
+            const interp = GameLogicInterpreter.getOrCreate();
+            if (interp.mod && (interp.mod.id || 'default') === id) interp.clear();
+        }
+        this._fileEntries.delete(filename);
+    }
+
+    /**
+     * 從 serverdata/asset-index.json 還原快取；JSON 立即載入記憶體，
+     * 貼圖 / 音效按需從 IndexedDB（原生為檔案）讀取。
+     */
+    private _hydrateFromDisk(done: () => void): void {
+        StorageManager.readJsonFile(this._cachePath(CACHE_INDEX), (err, data) => {
+            const index = (!err && data) ? data as unknown as CacheIndex : null;
+            const items = index && Array.isArray(index.items) ? index.items : [];
+            this._cacheVersion = index && typeof index.version === 'number' ? index.version : 0;
+            this._cacheItems.clear();
+            this._cachedBinary.clear();
+            this._ingested.clear();
+            this._fileEntries.clear();
+            this._log(
+                'hydrate: index =',
+                index ? `${items.length} item(s), v${this._cacheVersion}` : 'none',
+            );
+
+            const toIngest: ManifestItem[] = [];
+            for (const raw of items) {
+                const item = this._normalizeItem(raw);
+                if (!item) continue;
+                this._cacheItems.set(item.filename, item);
+                const kind = item.kind ?? this._guessKind(item.filename);
+                if (kind === 'texture' || kind === 'audio') {
+                    this._cachedBinary.add(item.filename);
+                    continue;
+                }
+                toIngest.push(item);
+            }
+
+            this._log(
+                'hydrate: json =', toIngest.length,
+                ', binary =', this._cachedBinary.size,
+            );
+
+            // pending 必須先設好，避免同步回調在第一項就提前完成
+            let pending = toIngest.length;
+            if (pending === 0) {
+                this._log('hydrate done (nothing to restore)');
+                done();
+                return;
+            }
+            const tick = () => {
+                pending--;
+                if (pending <= 0) {
+                    this._log(
+                        'hydrate done: memes=' + this._memes.size,
+                        'levels=' + this._levels.size,
+                        'mods=' + this._mods.size,
+                    );
+                    done();
+                }
+            };
+            for (const item of toIngest) {
+                this._ingestCached(item, tick);
+            }
         });
+    }
+
+    private _deleteCached(filename: string, extra = false): void {
+        this._purgeFileEntries(filename);
+        this._cacheItems.delete(filename);
+        this._cachedBinary.delete(filename);
+        this._ingested.delete(filename);
+        StorageManager.deleteFile(this._cachePath(filename));
+        this._log(extra ? '[remove:extra]' : '[remove]', filename, '(not in manifest)');
+    }
+
+    /**
+     * 掃描本地快取（IndexedDB 二進位、localStorage JSON、原生 serverdata/），
+     * 刪除 manifest 中已不存在的條目，包含索引外的孤兒資料。
+     */
+    private _reconcileCache(keep: Set<string>, done: (removed: number) => void): void {
+        StorageManager.listCacheFiles((files) => {
+            this._log('reconcile: local files =', files.length, ', manifest keep =', keep.size);
+            let removed = 0;
+            for (const raw of files) {
+                const name = raw.replace(/\\/g, '/').replace(/^\/+/, '');
+                if (!name || name === CACHE_INDEX) continue;
+                if (keep.has(name)) continue;
+
+                this._deleteCached(name, true);
+                removed++;
+            }
+            done(removed);
+        });
+    }
+
+    private _writeCacheIndex(): void {
+        const path = this._cachePath(CACHE_INDEX);
+        StorageManager.ensureDirFor(path);
+        const index: CacheIndex = {
+            version: this._cacheVersion,
+            items: Array.from(this._cacheItems.values()),
+        };
+        if (!StorageManager.writeJsonFile(path, index)) {
+            console.warn('[AssetSync] 快取索引寫入失敗:', path);
+        } else {
+            this._log('[index] saved', index.items.length, 'item(s), v' + index.version + ' →', path);
+        }
+    }
+
+    private _hashMatches(item: ManifestItem): boolean {
+        const cached = this._cacheItems.get(item.filename);
+        return !!cached && !!item.hash && cached.hash === item.hash;
     }
 
     private _isCached(item: ManifestItem): boolean {
         const kind = item.kind ?? this._guessKind(item.filename);
-        if (kind === 'texture') return this._frames.has(item.filename);
-        if (kind === 'audio') return this._clips.has(item.filename);
-        return StorageManager.isFileExist(`${CACHE_DIR}/memes/_bundle_${this._safe(item.filename)}.json`)
-            || StorageManager.isFileExist(`${CACHE_DIR}/levels/_bundle_${this._safe(item.filename)}.json`)
-            || StorageManager.isFileExist(`${CACHE_DIR}/${this._safe(item.filename)}`);
-    }
-
-    private _ingestCached(item: ManifestItem): void {
-        const memePath = `${CACHE_DIR}/memes/_bundle_${this._safe(item.filename)}.json`;
-        const levelPath = `${CACHE_DIR}/levels/_bundle_${this._safe(item.filename)}.json`;
-        if (StorageManager.isFileExist(memePath)) {
-            StorageManager.readJsonFile(memePath, (err, data) => {
-                if (!err && data) this._ingestMemePayload(data);
-            });
-        }
-        if (StorageManager.isFileExist(levelPath)) {
-            StorageManager.readJsonFile(levelPath, (err, data) => {
-                if (!err && data) this._ingestLevelPayload(data);
-            });
-        }
+        if (kind === 'texture' || kind === 'audio') return this._cachedBinary.has(item.filename);
+        return StorageManager.isFileExist(this._cachePath(item.filename));
     }
 
     private _loadTextureSet(set: MemeTextureSet, done: (pack: TexturePack) => void): void {
@@ -577,7 +856,7 @@ export class AssetSyncManager extends Component {
         }
     }
 
-    private _loadOptionalClip(path: string | undefined, done: (clip: AudioClip | null) => void): void {
+    private _fetchAudioOptional(path: string, done: (clip: AudioClip | null) => void): void {
         if (!path) {
             done(null);
             return;
@@ -585,63 +864,184 @@ export class AssetSyncManager extends Component {
         this._fetchAudio(path, done);
     }
 
+    /** 先查記憶體 → 本地二進位快取 → 遠端 / Resources / Base64。 */
     private _fetchTexture(urlOrPath: string, done: (frame: SpriteFrame | null) => void): void {
         const cached = this._frames.get(urlOrPath);
         if (cached) {
             done(cached);
             return;
         }
-        // Absolute remote / Base64 → as-is.
-        // CDN files (…/textures/meme_01.png) must join manifest base — preview already uses full URLs.
-        // Local Resources presets stay bare stems like textures/coin_1 (no file extension).
-        let ref = urlOrPath;
-        const isRemote = /^https?:\/\//i.test(urlOrPath) || /^data:/i.test(urlOrPath);
-        const looksLikeCdnFile = /\.(png|jpe?g|webp|gif)(\?|$)/i.test(urlOrPath);
-        if (
-            this.manifestUrl
-            && !isRemote
-            && !PRESET_COIN_SKINS[urlOrPath]
-            && (looksLikeCdnFile || !urlOrPath.startsWith('textures/'))
-        ) {
-            ref = this._join(this.manifestUrl, urlOrPath);
+
+        const rel = this._cacheRel(urlOrPath);
+        if (!rel) {
+            this._fetchTextureRemote(urlOrPath, done);
+            return;
         }
+
+        const cachePath = this._cachePath(rel);
+        StorageManager.readBinaryFile(cachePath, (err, bytes) => {
+            if (err || !bytes) {
+                this._fetchTextureRemote(urlOrPath, done);
+                return;
+            }
+            DynamicAssetLoader.loadSpriteFromBytes(
+                cachePath,
+                bytes,
+                this._imageExt(rel),
+                (frame) => {
+                    if (!frame) {
+                        this._fetchTextureRemote(urlOrPath, done);
+                        return;
+                    }
+                    this._frames.set(urlOrPath, frame);
+                    this._frames.set(rel, frame);
+                    done(frame);
+                },
+            );
+        });
+    }
+
+    private _fetchTextureRemote(urlOrPath: string, done: (frame: SpriteFrame | null) => void): void {
+        const ref = this._remoteRef(urlOrPath);
         DynamicAssetLoader.loadSprite(ref, (frame) => {
-            if (frame) this._frames.set(urlOrPath, frame);
-            else console.warn('[AssetSync] 貼圖失敗:', urlOrPath);
+            if (frame) {
+                this._frames.set(urlOrPath, frame);
+                if (ref !== urlOrPath) this._frames.set(ref, frame);
+            } else {
+                console.warn('[AssetSync] 貼圖失敗:', urlOrPath);
+            }
             done(frame);
         });
     }
 
+    /** 先查記憶體 → 本地二進位快取 → 遠端 / Resources / Base64 / preset。 */
     private _fetchAudio(urlOrPath: string, done: (clip: AudioClip | null) => void): void {
+        if (!urlOrPath) {
+            done(null);
+            return;
+        }
         const cached = this._clips.get(urlOrPath);
         if (cached) {
             done(cached);
             return;
         }
-        const ref = /^https?:\/\//i.test(urlOrPath) || /^data:/i.test(urlOrPath)
-            ? urlOrPath
-            : (this.manifestUrl && urlOrPath.includes('.')
-                ? this._join(this.manifestUrl, urlOrPath)
-                : urlOrPath);
+
+        const rel = this._cacheRel(urlOrPath);
+        if (!rel) {
+            this._fetchAudioRemote(urlOrPath, done);
+            return;
+        }
+
+        const cachePath = this._cachePath(rel);
+        StorageManager.readBinaryFile(cachePath, (err, bytes) => {
+            if (err || !bytes) {
+                this._fetchAudioRemote(urlOrPath, done);
+                return;
+            }
+            DynamicAssetLoader.loadAudioFromBytes(
+                cachePath,
+                bytes,
+                this._audioExt(rel),
+                (clip) => {
+                    if (!clip) {
+                        this._fetchAudioRemote(urlOrPath, done);
+                        return;
+                    }
+                    this._clips.set(urlOrPath, clip);
+                    this._clips.set(rel, clip);
+                    done(clip);
+                },
+            );
+        });
+    }
+
+    private _fetchAudioRemote(urlOrPath: string, done: (clip: AudioClip | null) => void): void {
+        const ref = this._remoteRef(urlOrPath);
         DynamicAssetLoader.loadAudio(ref, (clip) => {
-            if (clip) this._clips.set(urlOrPath, clip);
+            if (clip) {
+                this._clips.set(urlOrPath, clip);
+                if (ref !== urlOrPath) this._clips.set(ref, clip);
+            }
             done(clip);
         });
     }
 
     private _parseManifest(content: string): AssetManifest | null {
+        let data: unknown;
         try {
-            const data = JSON.parse(content) as AssetManifest;
-            if (typeof data.version !== 'number') return null;
-            if (!Array.isArray(data.items)) data.items = [];
-            data.items = data.items.filter(
-                (item) => item && typeof item.filename === 'string' && typeof item.hash === 'string',
-            );
-            return data;
+            data = JSON.parse(content);
         } catch (e) {
             console.warn('[AssetSync] manifest 解析失敗', e);
             return null;
         }
+        if (!data || typeof data !== 'object') return null;
+
+        const raw = data as {
+            version?: unknown;
+            baseUrl?: unknown;
+            items?: unknown;
+            memeConfig?: unknown;
+            levelConfig?: unknown;
+            modConfig?: unknown;
+        };
+        const version = typeof raw.version === 'number' ? raw.version : 0;
+        const items: ManifestItem[] = [];
+        const seen = new Set<string>();
+
+        const push = (candidate: unknown) => {
+            const item = this._normalizeItem(candidate);
+            if (!item || seen.has(item.filename)) return;
+            seen.add(item.filename);
+            items.push(item);
+        };
+
+        if (Array.isArray(raw.items)) {
+            for (const candidate of raw.items) push(candidate);
+        }
+
+        // 兼容舊清單欄位：僅在 items 未列出同名檔案時補入
+        const aliases: [string, ManifestItem['kind']][] = [
+            ['memeConfig', 'meme'],
+            ['levelConfig', 'level'],
+            ['modConfig', 'mod'],
+        ];
+        for (const [field, kind] of aliases) {
+            const file = raw[field as 'memeConfig' | 'levelConfig' | 'modConfig'];
+            if (typeof file !== 'string' || !file.trim()) continue;
+            push({ filename: file, hash: `${field}-${version}`, kind });
+        }
+
+        return {
+            version,
+            baseUrl: typeof raw.baseUrl === 'string' ? raw.baseUrl : undefined,
+            items,
+        };
+    }
+
+    private _normalizeItem(raw: unknown): ManifestItem | null {
+        if (!raw || typeof raw !== 'object') return null;
+        const value = raw as {
+            filename?: unknown;
+            hash?: unknown;
+            kind?: unknown;
+            url?: unknown;
+        };
+        if (typeof value.filename !== 'string') return null;
+        const filename = value.filename.replace(/\\/g, '/').replace(/^\.?\//, '');
+        if (!filename || filename.indexOf('..') >= 0 || filename === CACHE_INDEX) return null;
+
+        const allowed: ManifestItem['kind'][] = ['meme', 'level', 'texture', 'audio', 'json', 'mod'];
+        const kind = typeof value.kind === 'string'
+            && allowed.indexOf(value.kind as ManifestItem['kind']) >= 0
+            ? value.kind as ManifestItem['kind']
+            : this._guessKind(filename);
+
+        return {
+            filename,
+            hash: value.hash == null ? '' : String(value.hash),
+            kind,
+            url: typeof value.url === 'string' ? value.url : undefined,
+        };
     }
 
     private _resolve(manifest: AssetManifest, item: ManifestItem): string {
@@ -659,9 +1059,35 @@ export class AssetSyncManager extends Component {
         return base + path.replace(/^\//, '');
     }
 
+    /** 相對檔名 → 本地快取相對路徑；URL / Base64 / preset 不落盤。 */
+    private _cacheRel(ref: string): string | null {
+        if (!ref) return null;
+        if (/^https?:\/\//i.test(ref) || /^data:/i.test(ref)) return null;
+        if (PRESET_COIN_SKINS[ref] || PRESET_SFX[ref]) return null;
+        const rel = ref.replace(/\\/g, '/').replace(/^\.?\//, '');
+        if (!rel || rel.indexOf('..') >= 0) return null;
+        return rel;
+    }
+
+    /** 遠端加載時把「帶副檔名的相對路徑」拼到 manifest 目錄。 */
+    private _remoteRef(ref: string): string {
+        if (!ref) return ref;
+        if (/^https?:\/\//i.test(ref) || /^data:/i.test(ref)) return ref;
+        if (PRESET_COIN_SKINS[ref] || PRESET_SFX[ref]) return ref;
+        if (this.manifestUrl && this._looksLikeFile(ref)) {
+            return this._join(this.manifestUrl, ref);
+        }
+        return ref;
+    }
+
+    private _looksLikeFile(ref: string): boolean {
+        const path = ref.split('?')[0].split('#')[0];
+        return /\.(png|jpe?g|webp|gif|wav|mp3|ogg)$/i.test(path);
+    }
+
     private _guessKind(filename: string): ManifestItem['kind'] {
         const lower = filename.toLowerCase();
-        if (/\.(png|jpg|jpeg|webp)$/.test(lower)) return 'texture';
+        if (/\.(png|jpg|jpeg|webp|gif)$/.test(lower)) return 'texture';
         if (/\.(wav|mp3|ogg)$/.test(lower)) return 'audio';
         if (lower.includes('meme')) return 'meme';
         if (lower.includes('level')) return 'level';
@@ -674,14 +1100,34 @@ export class AssetSyncManager extends Component {
         return !!mod && mod.schemaVersion === 1 && Array.isArray(mod.pipelines) && !!mod.graph;
     }
 
-    private _upsertMod(cfg: ModConfig): void {
-        if (!this._looksLikeMod(cfg)) return;
-        this._mods.set(cfg.id || 'default', cfg);
+    private _looksLikeMemePayload(data: unknown): boolean {
+        if (Array.isArray(data)) {
+            return data.length > 0 && !!(data[0] as MemeConfig)?.textures;
+        }
+        const list = (data as { memes?: unknown } | null)?.memes;
+        if (Array.isArray(list)) return true;
+        const single = data as MemeConfig | null;
+        return !!single && typeof single.id === 'string' && !!single.textures;
+    }
+
+    private _looksLikeLevelPayload(data: unknown): boolean {
+        return this._looksLikeLevel(data)
+            || Array.isArray((data as { levels?: unknown } | null)?.levels);
+    }
+
+    private _looksLikeLevel(data: unknown): boolean {
+        const level = data as LevelConfig;
+        return !!level && typeof level.id === 'number' && Array.isArray(level.coins);
+    }
+
+    private _cachePath(rel: string): string {
+        return StorageManager.getCachePath(rel);
     }
 
     private _imageExt(url: string): string {
         if (/\.jpe?g(\?|$)/i.test(url)) return '.jpg';
         if (/\.webp(\?|$)/i.test(url)) return '.webp';
+        if (/\.gif(\?|$)/i.test(url)) return '.gif';
         return '.png';
     }
 
@@ -691,39 +1137,24 @@ export class AssetSyncManager extends Component {
         return '.wav';
     }
 
-    private _looksLikeMemeList(data: unknown): boolean {
-        return Array.isArray(data) && data.length > 0 && !!(data[0] as MemeConfig)?.textures;
-    }
-
-    private _looksLikeLevel(data: unknown): boolean {
-        const level = data as LevelConfig;
-        return !!level && typeof level.id === 'number' && Array.isArray(level.coins);
-    }
-
-    private _safe(name: string): string {
-        return name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    }
-
-    private _readHashes(): CachedHashMap {
-        try {
-            const raw = sys.localStorage.getItem(HASH_KEY);
-            if (!raw) return { version: 0, hashes: {} };
-            const parsed = JSON.parse(raw) as CachedHashMap;
-            if (typeof parsed.version !== 'number' || !parsed.hashes) return { version: 0, hashes: {} };
-            return parsed;
-        } catch {
-            return { version: 0, hashes: {} };
-        }
-    }
-
-    private _writeHashes(): void {
-        sys.localStorage.setItem(HASH_KEY, JSON.stringify(this._hashes));
+    /** 除錯輸出，由 `AssetSyncManager.verbose` 開關控制。 */
+    private _log(...args: unknown[]): void {
+        if (AssetSyncManager.verbose) console.log('[AssetSync]', ...args);
     }
 
     private _finish(err: string | null, done?: (err: string | null) => void): void {
         this._running = false;
-        if (err) console.warn('[AssetSync] 使用已快取內容:', err);
-        else console.log('[AssetSync] sync ok, memes=', this._memes.size, 'levels=', this._levels.size);
+        if (err) {
+            console.warn('[AssetSync] 使用已快取內容:', err);
+        } else {
+            this._log(
+                'sync done: memes=' + this._memes.size,
+                'levels=' + this._levels.size,
+                'mods=' + this._mods.size,
+                'frames=' + this._frames.size,
+                'clips=' + this._clips.size,
+            );
+        }
         done?.(err);
     }
 }

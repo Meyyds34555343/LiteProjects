@@ -2,8 +2,9 @@ import { _decorator, Button, Component, director, Node, Label, resources, instan
 import { LevelManager } from '../LevelManager';
 import { SoundManager } from '../SoundManager';
 import { I18n } from '../I18n';
-import { UpdateManager } from '../UpdateManager';
 import { MainMenuLayout } from '../UI/MainMenuLayout';
+import { AssetSyncManager } from '../Meme/AssetSyncManager';
+import { DEFAULT_CDN_MANIFEST_URL } from '../Meme/CdnConfig';
 import { GameMode, GameScene } from './GameScene';
 const { ccclass, property } = _decorator;
 
@@ -92,35 +93,48 @@ export class MainScene extends Component {
         I18n.init(() => {
             this._translateLabels();
 
-            // Show menus immediately; update check must not block preview / web play.
+            // Menus must stay usable even when the CDN is slow / unreachable (preview, web, itch).
             this.showMenus(true);
             if (this.labelUpdateMessage) {
-                this.labelUpdateMessage.string = '';
+                this.labelUpdateMessage.string = I18n.t('main_check_update');
             }
 
-            // Optional remote level sync (skipped in Cocos preview / web / localhost).
-            UpdateManager.checkUpdate(
-                (p) => {
-                    console.log(`[Update] 更新进度 ${(p * 100).toFixed(0)}%`);
-                    if (this.labelUpdateMessage && p < 1) {
-                        this.labelUpdateMessage.string = I18n.t('main_update_progress') + (p * 100).toFixed(0) + "%";
-                    }
-                },
-                (err, errParams) => {
-                    if (!this.labelUpdateMessage) {
-                        this.showMenus(true);
-                        return;
-                    }
+            // 游戏启动时按 manifest.json 更新本地资产缓存（后台进行，不阻塞界面）
+            const sync = this.node.getComponent(AssetSyncManager)
+                ?? this.node.addComponent(AssetSyncManager);
+            if (!sync.manifestUrl) {
+                sync.manifestUrl = DEFAULT_CDN_MANIFEST_URL;
+            }
+            sync.sync(
+                (err) => {
                     if (err) {
-                        // Keep menus usable; hide scary localhost/preview failures.
-                        console.warn('[Update] 更新失败:', err, errParams);
-                        this.labelUpdateMessage.string = '';
+                        const errKey = err === 'network'
+                            ? 'main_update_err_fetch_index'
+                            : err === 'manifest'
+                                ? 'main_update_err_parse_index'
+                                : err === 'busy'
+                                    ? 'main_update_err_running'
+                                    : 'main_update_err_download';
+                        console.warn('[Update] 更新失败:', err);
+                        if (this.labelUpdateMessage) {
+                            this.labelUpdateMessage.string = I18n.t('main_update_error')
+                                + I18n.t(errKey, { code: 0, file: '' });
+                        }
                     } else {
                         console.log('[Update] 更新完成 / skipped');
-                        this.labelUpdateMessage.string = '';
+                        if (this.labelUpdateMessage) {
+                            this.labelUpdateMessage.string = '';
+                        }
                     }
                     this.showMenus(true);
-                }
+                },
+                (completed, total) => {
+                    if (!this.labelUpdateMessage) return;
+                    const pct = total > 0 ? (completed / total) * 100 : 0;
+                    console.log(`[Update] 更新进度 ${pct.toFixed(0)}%`);
+                    this.labelUpdateMessage.string =
+                        I18n.t('main_update_progress') + pct.toFixed(0) + '%';
+                },
             );
 
         });

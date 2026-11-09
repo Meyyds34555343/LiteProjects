@@ -229,6 +229,111 @@ export class DynamicAssetLoader {
         }
     }
 
+    /**
+     * 从本地缓存的字节解码 SpriteFrame。
+     * Web 用 Blob URL + Image；原生用已落盘的文件路径。
+     */
+    public static loadSpriteFromBytes(
+        cacheRef: string,
+        bytes: ArrayBuffer,
+        ext: string,
+        done: (frame: SpriteFrame | null) => void,
+    ): void {
+        const ImageCtor = (globalThis as { Image?: new () => HTMLImageElement }).Image;
+        const canBlob = typeof Blob !== 'undefined'
+            && typeof URL !== 'undefined'
+            && typeof URL.createObjectURL === 'function';
+        if (ImageCtor && canBlob) {
+            const blobUrl = URL.createObjectURL(
+                new Blob([new Uint8Array(bytes)], { type: this._mimeForExt(ext) }),
+            );
+            const img = new ImageCtor();
+            img.onload = () => {
+                let frame: SpriteFrame | null = null;
+                try {
+                    frame = this._frameFromImage(new ImageAsset(img));
+                } catch (e) {
+                    console.warn('[DynamicAsset] 缓存图片解码失败', e);
+                }
+                URL.revokeObjectURL(blobUrl);
+                done(frame);
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(blobUrl);
+                done(null);
+            };
+            img.src = blobUrl;
+            return;
+        }
+
+        assetManager.loadRemote<ImageAsset>(cacheRef, { ext }, (err, image) => {
+            if (err || !image) {
+                console.warn('[DynamicAsset] 本地缓存图片加载失败:', cacheRef, err);
+                done(null);
+                return;
+            }
+            done(this._frameFromImage(image));
+        });
+    }
+
+    /** 从本地缓存的字节解码 AudioClip。 */
+    public static loadAudioFromBytes(
+        cacheRef: string,
+        bytes: ArrayBuffer,
+        ext: string,
+        done: (clip: AudioClip | null) => void,
+    ): void {
+        const canBlob = typeof Blob !== 'undefined'
+            && typeof URL !== 'undefined'
+            && typeof URL.createObjectURL === 'function';
+        if (canBlob) {
+            const blobUrl = URL.createObjectURL(
+                new Blob([new Uint8Array(bytes)], { type: this._mimeForExt(ext) }),
+            );
+            assetManager.loadRemote<AudioClip>(blobUrl, { ext }, (err, clip) => {
+                URL.revokeObjectURL(blobUrl);
+                if (err || !clip) {
+                    console.warn('[DynamicAsset] 缓存音频解码失败:', err);
+                    done(null);
+                    return;
+                }
+                done(clip);
+            });
+            return;
+        }
+
+        assetManager.loadRemote<AudioClip>(cacheRef, { ext }, (err, clip) => {
+            if (err || !clip) {
+                console.warn('[DynamicAsset] 本地缓存音频加载失败:', cacheRef, err);
+                done(null);
+                return;
+            }
+            done(clip);
+        });
+    }
+
+    private static _mimeForExt(ext: string): string {
+        switch (ext.toLowerCase()) {
+            case '.jpg':
+            case '.jpeg':
+                return 'image/jpeg';
+            case '.png':
+                return 'image/png';
+            case '.webp':
+                return 'image/webp';
+            case '.gif':
+                return 'image/gif';
+            case '.mp3':
+                return 'audio/mpeg';
+            case '.ogg':
+                return 'audio/ogg';
+            case '.wav':
+                return 'audio/wav';
+            default:
+                return 'application/octet-stream';
+        }
+    }
+
     private static _isHttp(ref: string): boolean {
         return /^https?:\/\//i.test(ref);
     }
