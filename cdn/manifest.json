@@ -1,12 +1,12 @@
 {
-  "version": 11,
+  "version": 12,
   "baseUrl": "",
   "memeConfig": "memes/index.json",
   "levelConfig": "levels/demo_behavior.json",
   "items": [
     {
       "filename": "memes/index.json",
-      "hash": "n8n-doge-mw9ay000",
+      "hash": "n8n-doge-mw9ec4e9",
       "kind": "meme"
     },
     {
@@ -74,12 +74,12 @@
     },
     {
       "filename": "memes/doge.json",
-      "hash": "n8n-doge-mw9ay000",
+      "hash": "n8n-doge-mw9ec4e9",
       "kind": "meme"
     },
     {
       "filename": "textures/doge.png",
-      "hash": "n8n-doge-mw9ay000",
+      "hash": "n8n-doge-mw9ec4e9",
       "kind": "texture"
     }
   ]
