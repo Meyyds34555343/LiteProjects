@@ -8,27 +8,75 @@
     "coins": [
         {
             "type": "coin",
-            "class": 1,
-            "x": -120,
-            "y": 0,
-            "canshot": true,
+            "class": 7,
+            "x": 286,
+            "y": -112,
+            "canshot": false,
             "radius": 32
         },
         {
             "type": "coin",
             "class": 1,
-            "x": 100,
-            "y": 0,
+            "x": -264,
+            "y": 176,
+            "canshot": true,
+            "radius": 32
+        },
+        {
+            "type": "coin",
+            "class": 2,
+            "x": -170,
+            "y": -167,
+            "canshot": false,
+            "radius": 32
+        },
+        {
+            "type": "coin",
+            "class": 3,
+            "x": -299,
+            "y": -202,
+            "canshot": false,
+            "radius": 32
+        },
+        {
+            "type": "coin",
+            "class": 5,
+            "x": 32,
+            "y": 75,
             "canshot": false,
             "radius": 32,
-            "memeId": "doge",
-            "skin": {
-                "default": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/doge.png",
-                "idle": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/doge.png",
-                "aim": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/doge.png",
-                "shot": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/doge.png",
-                "hitted": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/doge.png"
-            }
+            "behavior": "FlashStepBehavior",
+            "behaviors": [
+                "FlashStepBehavior"
+            ]
+        },
+        {
+            "type": "coin",
+            "class": 4,
+            "x": -41,
+            "y": -177,
+            "canshot": false,
+            "radius": 32,
+            "behavior": "FreezeBehavior",
+            "behaviors": [
+                "FreezeBehavior"
+            ]
+        },
+        {
+            "type": "coin",
+            "class": 6,
+            "x": 168,
+            "y": -142,
+            "canshot": false,
+            "radius": 32
+        },
+        {
+            "type": "coin",
+            "class": 8,
+            "x": 289,
+            "y": 198,
+            "canshot": false,
+            "radius": 32
         }
     ]
 }
