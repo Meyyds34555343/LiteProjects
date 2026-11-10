@@ -1,0 +1,18 @@
+{
+    "id": 17,
+    "width": 800,
+    "height": 600,
+    "wall": { "thickness": 64 },
+    "coins": [
+        { "type": "coin", "class": 1, "canshot": true, "x": -260, "y": 200 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 260, "y": 200 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 0, "y": 200 },
+        { "type": "coin", "class": 1, "canshot": true, "x": -180, "y": -80 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 180, "y": -80 },
+        { "type": "block", "x": -80, "y": 60, "shape": "circle", "radius": 48 },
+        { "type": "block", "x": 80, "y": 60, "shape": "circle", "radius": 48 },
+        { "type": "mud", "x": 0, "y": 0, "shape": "circle", "radius": 56, "friction": 0.5 },
+        { "type": "bomb", "class": 1, "x": -200, "y": 40, "radius": 32 },
+        { "type": "bomb", "class": 1, "x": 200, "y": 40, "radius": 32 }
+    ]
+}

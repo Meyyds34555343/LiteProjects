@@ -1,0 +1,13 @@
+{
+    "id": 7,
+    "width": 800,
+    "height": 600,
+    "wall": { "thickness": 64 },
+    "coins": [
+        { "type": "coin", "class": 1, "canshot": true, "x": -240, "y": 160 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 240, "y": 160 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 0, "y": -80 },
+        { "type": "block", "x": -120, "y": 40, "shape": "circle", "radius": 48 },
+        { "type": "block", "x": 120, "y": 40, "shape": "circle", "radius": 48 }
+    ]
+}

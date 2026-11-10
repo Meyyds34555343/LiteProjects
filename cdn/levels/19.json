@@ -1,0 +1,24 @@
+{
+    "id": 19,
+    "width": 800,
+    "height": 600,
+    "wall": { "thickness": 64 },
+    "coins": [
+        { "type": "coin", "class": 1, "canshot": true, "x": -260, "y": 200 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 260, "y": 200 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 0, "y": 200 },
+        { "type": "coin", "class": 1, "canshot": true, "x": -160, "y": -60 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 160, "y": -60 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 0, "y": -180 },
+        { "type": "coin", "class": 1, "canshot": true, "x": -300, "y": -100 },
+        { "type": "coin", "class": 1, "canshot": true, "x": 300, "y": -100 },
+        { "type": "block", "x": -100, "y": 100, "shape": "circle", "radius": 56 },
+        { "type": "block", "x": 100, "y": 100, "shape": "circle", "radius": 56 },
+        { "type": "mud", "x": 0, "y": 0, "shape": "circle", "radius": 64, "friction": 0.5 },
+        { "type": "mud", "x": -220, "y": 20, "shape": "circle", "radius": 40, "friction": 0.5 },
+        { "type": "mud", "x": 220, "y": 20, "shape": "circle", "radius": 40, "friction": 0.5 },
+        { "type": "bomb", "class": 1, "x": -60, "y": -100, "radius": 32 },
+        { "type": "bomb", "class": 1, "x": 60, "y": -100, "radius": 32 },
+        { "type": "bomb", "class": 1, "x": 0, "y": 100, "radius": 32 }
+    ]
+}
