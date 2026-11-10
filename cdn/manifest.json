@@ -81,6 +81,106 @@
       "filename": "textures/doge.png",
       "hash": "n8n-doge-mw9ec4e9",
       "kind": "texture"
+    },
+    {
+      "filename": "levels/1.json",
+      "hash": "level-1-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/2.json",
+      "hash": "level-2-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/3.json",
+      "hash": "level-3-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/4.json",
+      "hash": "level-4-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/5.json",
+      "hash": "level-5-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/6.json",
+      "hash": "level-6-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/7.json",
+      "hash": "level-7-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/8.json",
+      "hash": "level-8-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/9.json",
+      "hash": "level-9-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/10.json",
+      "hash": "level-10-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/11.json",
+      "hash": "level-11-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/12.json",
+      "hash": "level-12-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/13.json",
+      "hash": "level-13-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/14.json",
+      "hash": "level-14-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/15.json",
+      "hash": "level-15-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/16.json",
+      "hash": "level-16-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/17.json",
+      "hash": "level-17-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/18.json",
+      "hash": "level-18-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/19.json",
+      "hash": "level-19-v1",
+      "kind": "level"
+    },
+    {
+      "filename": "levels/20.json",
+      "hash": "level-20-v1",
+      "kind": "level"
     }
   ]
 }
