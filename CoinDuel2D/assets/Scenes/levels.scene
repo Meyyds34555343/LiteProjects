@@ -1349,6 +1349,9 @@
     "levelsContainer": {
       "__id__": 19
     },
+    "columns": 4,
+    "cellSpacingX": 160,
+    "cellSpacingY": 168,
     "_id": "dbAm3GWnFOhL0mNYE50SkJ"
   },
   {
