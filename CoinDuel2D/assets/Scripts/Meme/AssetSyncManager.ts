@@ -100,6 +100,8 @@ export class AssetSyncManager extends Component {
     private _ingested = new Set<string>();
     /** JSON filename → 該檔載入過的 meme / level / mod id。 */
     private _fileEntries = new Map<string, FileEntries>();
+    /** meme 資料尚未載入時，暫存等待套用外觀的硬幣。 */
+    private _pendingMemeCoins: { node: Node; memeId: string; done?: () => void }[] = [];
     private _cacheVersion = 0;
 
     protected onLoad(): void {
@@ -229,7 +231,8 @@ export class AssetSyncManager extends Component {
 
     /** 生成一枚並套 Meme／行為。 */
     public spawnConfiguredCoin(gl: LevelSpawnHost, prefab: Prefab, cfg: CoinConfig): Node | null {
-        const meme = cfg.memeId ? this._memes.get(cfg.memeId) : null;
+        const memeId = cfg.memeId != null ? String(cfg.memeId) : '';
+        const meme = memeId ? this._memes.get(memeId) : null;
         const radius = cfg.radius ?? meme?.radius;
         const primary =
             cfg.behaviors?.[0] ||
@@ -249,7 +252,7 @@ export class AssetSyncManager extends Component {
         for (const id of extras) {
             if (id && id !== primary) gl.attachCoinBehavior(node, id);
         }
-        if (cfg.memeId) this.applyMemeToCoin(node, cfg.memeId);
+        if (memeId) this.applyMemeToCoin(node, memeId);
         // skin / skinKey 可疊加或單獨使用（不需重編場景）
         if (cfg.skin || cfg.skinKey) this.applyCoinSkin(node, cfg);
         return node;
@@ -359,10 +362,27 @@ export class AssetSyncManager extends Component {
      * 之後 showIdle / showAim / showShot / showHit 會自動換圖。
      */
     public applyMemeToCoin(coin: Node, memeId: string, done?: () => void): void {
-        const meme = this._memes.get(memeId);
         const ctrl = coin.getComponent(CoinController);
-        if (!meme || !ctrl) {
+        if (!ctrl) {
             done?.();
+            return;
+        }
+        const meme = this._memes.get(memeId);
+        if (!meme) {
+            // meme 可能還沒同步完成；先排隊，資產載入後再套用
+            if (coin.isValid) {
+                const existing = this._pendingMemeCoins.find(
+                    (item) => item.node === coin && item.memeId === memeId,
+                );
+                if (existing) {
+                    if (done) existing.done = done;
+                } else {
+                    this._pendingMemeCoins.push({ node: coin, memeId, done });
+                }
+                this._log('[meme:pending]', memeId, '(not loaded yet)');
+            } else {
+                done?.();
+            }
             return;
         }
         this._loadTextureSet(meme.textures, (pack) => {
@@ -1137,6 +1157,23 @@ export class AssetSyncManager extends Component {
         return '.wav';
     }
 
+    /** meme 資料載入後，補套用先前排隊的硬幣外觀。 */
+    private _flushPendingMemes(): void {
+        if (this._pendingMemeCoins.length === 0) return;
+        const pending = this._pendingMemeCoins;
+        this._pendingMemeCoins = [];
+        this._log('[meme] flush pending =', pending.length);
+        for (const item of pending) {
+            if (!item.node || !item.node.isValid) continue;
+            if (!this._memes.has(item.memeId)) {
+                this._log('[meme:missing]', item.memeId, '(not in manifest)');
+                item.done?.();
+                continue;
+            }
+            this.applyMemeToCoin(item.node, item.memeId, item.done);
+        }
+    }
+
     /** 除錯輸出，由 `AssetSyncManager.verbose` 開關控制。 */
     private _log(...args: unknown[]): void {
         if (AssetSyncManager.verbose) console.log('[AssetSync]', ...args);
@@ -1144,6 +1181,7 @@ export class AssetSyncManager extends Component {
 
     private _finish(err: string | null, done?: (err: string | null) => void): void {
         this._running = false;
+        this._flushPendingMemes();
         if (err) {
             console.warn('[AssetSync] 使用已快取內容:', err);
         } else {

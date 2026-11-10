@@ -38,13 +38,10 @@
       },
       {
         "__id__": 24
-      },
-      {
-        "__id__": 26
       }
     ],
     "_prefab": {
-      "__id__": 28
+      "__id__": 26
     },
     "_lpos": {
       "__type__": "cc.Vec3",
@@ -178,7 +175,7 @@
     "_string": "1",
     "_horizontalAlign": 1,
     "_verticalAlign": 1,
-    "_actualFontSize": 32,
+    "_actualFontSize": 35.82222222222222,
     "_fontSize": 32,
     "_fontFamily": "Arial",
     "_lineHeight": 40,
@@ -639,54 +636,6 @@
   {
     "__type__": "cc.CompPrefabInfo",
     "fileId": "8c4eJRv/VPq7B4XKMfaZaa"
-  },
-  {
-    "__type__": "335865XjmhFvoUSXSa0cWeQ",
-    "_name": "",
-    "_objFlags": 0,
-    "__editorExtras__": {},
-    "node": {
-      "__id__": 1
-    },
-    "_enabled": true,
-    "__prefab": {
-      "__id__": 27
-    },
-    "labelLevel": {
-      "__id__": 5
-    },
-    "nodeLock": {
-      "__id__": 8
-    },
-    "nodePassed": {
-      "__id__": 14
-    },
-    "colorLocked": {
-      "__type__": "cc.Color",
-      "r": 129,
-      "g": 129,
-      "b": 129,
-      "a": 255
-    },
-    "colorUnlocked": {
-      "__type__": "cc.Color",
-      "r": 207,
-      "g": 184,
-      "b": 61,
-      "a": 255
-    },
-    "colorPassed": {
-      "__type__": "cc.Color",
-      "r": 0,
-      "g": 173,
-      "b": 0,
-      "a": 255
-    },
-    "_id": ""
-  },
-  {
-    "__type__": "cc.CompPrefabInfo",
-    "fileId": "c8fbQ//gBEjq2kiAdasIXh"
   },
   {
     "__type__": "cc.PrefabInfo",
