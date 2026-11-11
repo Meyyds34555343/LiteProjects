@@ -1,5 +1,5 @@
 {
-  "version": 16,
+  "version": 17,
   "baseUrl": "",
   "memeConfig": "memes/index.json",
   "levelConfig": "levels/demo_behavior.json",
@@ -191,6 +191,12 @@
       "filename": "textures/frog.png",
       "hash": "editor-frog-mwbd2xkv",
       "kind": "texture"
+    },
+    {
+      "filename": "textures/arm.png",
+      "hash": "gdrive-arm-mwbdbikj",
+      "kind": "texture",
+      "url": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/arm.png"
     }
   ]
 }
