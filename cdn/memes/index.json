@@ -95,6 +95,18 @@
         "default": "textures/mud.png",
         "idle": "textures/mud.png"
       }
+    },
+    {
+      "id": "bomb",
+      "behavior": "BombBehavior",
+      "behaviors": [
+        "BombBehavior"
+      ],
+      "radius": 32,
+      "textures": {
+        "default": "textures/bomb.png",
+        "idle": "textures/bomb.png"
+      }
     }
   ]
 }
