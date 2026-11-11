@@ -1,0 +1,15 @@
+{
+  "id": "frog",
+  "behavior": "NoneBehavior",
+  "behaviors": [
+    "NoneBehavior"
+  ],
+  "radius": 32,
+  "textures": {
+    "default": "textures/frog.png",
+    "idle": "textures/frog.png",
+    "aim": "textures/frog.png",
+    "shot": "textures/frog.png",
+    "hitted": "textures/frog.png"
+  }
+}
