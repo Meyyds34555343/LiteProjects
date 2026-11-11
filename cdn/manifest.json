@@ -1,12 +1,12 @@
 {
-  "version": 19,
+  "version": 20,
   "baseUrl": "",
   "memeConfig": "memes/index.json",
   "levelConfig": "levels/demo_behavior.json",
   "items": [
     {
       "filename": "memes/index.json",
-      "hash": "n8n-mud-mwbdtt34",
+      "hash": "n8n-bomb-mwbdubk3",
       "kind": "meme"
     },
     {
@@ -216,6 +216,16 @@
     {
       "filename": "textures/mud.png",
       "hash": "n8n-mud-mwbdtt34",
+      "kind": "texture"
+    },
+    {
+      "filename": "memes/bomb.json",
+      "hash": "n8n-bomb-mwbdubk3",
+      "kind": "meme"
+    },
+    {
+      "filename": "textures/bomb.png",
+      "hash": "n8n-bomb-mwbdubk3",
       "kind": "texture"
     }
   ]
