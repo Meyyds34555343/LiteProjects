@@ -1,0 +1,15 @@
+{
+  "id": "bomb",
+  "behavior": "BombBehavior",
+  "behaviors": [
+    "BombBehavior"
+  ],
+  "radius": 32,
+  "textures": {
+    "default": "textures/bomb.png",
+    "idle": "textures/bomb.png",
+    "aim": "textures/bomb.png",
+    "shot": "textures/bomb.png",
+    "hitted": "textures/bomb.png"
+  }
+}
