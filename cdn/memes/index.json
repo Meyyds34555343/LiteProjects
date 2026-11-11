@@ -59,6 +59,18 @@
         "default": "textures/doge.png",
         "idle": "textures/doge.png"
       }
+    },
+    {
+      "id": "frog",
+      "behavior": "NoneBehavior",
+      "behaviors": [
+        "NoneBehavior"
+      ],
+      "radius": 32,
+      "textures": {
+        "default": "textures/frog.png",
+        "idle": "textures/frog.png"
+      }
     }
   ]
 }
