@@ -1,12 +1,12 @@
 {
-  "version": 14,
+  "version": 15,
   "baseUrl": "",
   "memeConfig": "memes/index.json",
   "levelConfig": "levels/demo_behavior.json",
   "items": [
     {
       "filename": "memes/index.json",
-      "hash": "n8n-doge-mw9ec4e9",
+      "hash": "n8n-frog-mwbd031x",
       "kind": "meme"
     },
     {
@@ -181,6 +181,16 @@
       "filename": "levels/20.json",
       "hash": "level-20-v1",
       "kind": "level"
+    },
+    {
+      "filename": "memes/frog.json",
+      "hash": "n8n-frog-mwbd031x",
+      "kind": "meme"
+    },
+    {
+      "filename": "textures/frog.png",
+      "hash": "n8n-frog-mwbd031x",
+      "kind": "texture"
     }
   ]
 }
