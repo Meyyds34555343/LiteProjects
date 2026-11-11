@@ -1,0 +1,15 @@
+{
+  "id": "mud",
+  "behavior": "MudBehavior",
+  "behaviors": [
+    "MudBehavior"
+  ],
+  "radius": 32,
+  "textures": {
+    "default": "textures/mud.png",
+    "idle": "textures/mud.png",
+    "aim": "textures/mud.png",
+    "shot": "textures/mud.png",
+    "hitted": "textures/mud.png"
+  }
+}
