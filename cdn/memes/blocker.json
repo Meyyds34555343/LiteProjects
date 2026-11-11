@@ -1,0 +1,15 @@
+{
+  "id": "blocker",
+  "behavior": "BlockerBehavior",
+  "behaviors": [
+    "BlockerBehavior"
+  ],
+  "radius": 32,
+  "textures": {
+    "default": "textures/blocker.png",
+    "idle": "textures/blocker.png",
+    "aim": "textures/blocker.png",
+    "shot": "textures/blocker.png",
+    "hitted": "textures/blocker.png"
+  }
+}
