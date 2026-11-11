@@ -1,12 +1,12 @@
 {
-  "version": 17,
+  "version": 18,
   "baseUrl": "",
   "memeConfig": "memes/index.json",
   "levelConfig": "levels/demo_behavior.json",
   "items": [
     {
       "filename": "memes/index.json",
-      "hash": "editor-frog-mwbd2xkv",
+      "hash": "n8n-blocker-mwbdt78n",
       "kind": "meme"
     },
     {
@@ -197,6 +197,16 @@
       "hash": "gdrive-arm-mwbdbikj",
       "kind": "texture",
       "url": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/arm.png"
+    },
+    {
+      "filename": "memes/blocker.json",
+      "hash": "n8n-blocker-mwbdt78n",
+      "kind": "meme"
+    },
+    {
+      "filename": "textures/blocker.png",
+      "hash": "n8n-blocker-mwbdt78n",
+      "kind": "texture"
     }
   ]
 }
