@@ -71,6 +71,18 @@
         "default": "textures/frog.png",
         "idle": "textures/frog.png"
       }
+    },
+    {
+      "id": "blocker",
+      "behavior": "BlockerBehavior",
+      "behaviors": [
+        "BlockerBehavior"
+      ],
+      "radius": 32,
+      "textures": {
+        "default": "textures/blocker.png",
+        "idle": "textures/blocker.png"
+      }
     }
   ]
 }
