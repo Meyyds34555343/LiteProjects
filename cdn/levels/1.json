@@ -25,8 +25,8 @@
         {
             "type": "coin",
             "class": 1,
-            "x": 220,
-            "y": -200,
+            "x": -60,
+            "y": -180,
             "canshot": true,
             "radius": 32
         }
