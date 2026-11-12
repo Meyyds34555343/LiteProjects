@@ -227,6 +227,11 @@
       "filename": "textures/bomb.png",
       "hash": "n8n-bomb-mwbdubk3",
       "kind": "texture"
+    },
+    {
+      "filename": "levels/levels.json",
+      "hash": "level-levels-v1",
+      "kind": "level"
     }
   ]
 }
