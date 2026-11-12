@@ -25,7 +25,7 @@ export interface DragTutorialStep {
     type: 'drag';
     /** 提示文字的 i18n key */
     hintKey: string;
-    /** 要求拖动的硬币索引（coinGroup.children 中的序号，教程开始时解析为 Node 引用） */
+    /** 要求拖动的硬币索引（coinGroup 中带刚体的硬币节点序号） */
     sourceCoinIndex: number;
     /** 要求击打的目标硬币索引 */
     targetCoinIndex: number;
@@ -95,13 +95,22 @@ export class TutorialManager extends Component {
 
     // ── 教程生命周期 ──
 
+    /**
+     * 只取真正的硬币节点：coinGroup 下带 RigidBody2D 的子节点。
+     * 这样会过滤掉光环、拖拽线等纯装饰节点。
+     */
+    private _getRealCoins(): Node[] {
+        const all = this.gameLogic?.coinGroup?.children ?? [];
+        return all.filter((node) => !!node && node.isValid && !!node.getComponent(RigidBody2D));
+    }
+
     /** 统一教程入口：按顺序执行介绍/拖拽步骤，可混排 */
     public startTutorial(steps: TutorialStep[]): void {
         this._active = true;
         this._currentStepIndex = 0;
 
         // 解析拖拽步骤索引为 Node 引用（硬币销毁后索引会变，必须用引用）
-        const coins = this.gameLogic?.coinGroup?.children ?? [];
+        const coins = this._getRealCoins();
         const lastIndex = Math.max(0, coins.length - 1);
         const resolved: ResolvedStep[] = [];
         for (const s of steps) {
@@ -470,7 +479,7 @@ export class TutorialManager extends Component {
 
     /** 清除所有硬币高亮 */
     private _clearCoinHighlight(): void {
-        const coins = this.gameLogic?.coinGroup?.children ?? [];
+        const coins = this._getRealCoins();
         for (const coin of coins) {
             const ctrl = coin.getComponent(CoinController);
             if (ctrl) {
@@ -557,7 +566,7 @@ export class TutorialManager extends Component {
 
     /** 获取手势提示方向（闲置时自动查找最近目标） */
     private _getGestureHint(): { source: Node; direction: Vec3 } | null {
-        const coins = this.gameLogic?.coinGroup?.children ?? [];
+        const coins = this._getRealCoins();
         if (coins.length < 2) return null;
 
         const source = coins[0];
