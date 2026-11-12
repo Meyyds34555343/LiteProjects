@@ -26,15 +26,7 @@
             "type": "coin",
             "class": 1,
             "x": 220,
-            "y": 20,
-            "canshot": true,
-            "radius": 32
-        },
-        {
-            "type": "coin",
-            "class": 1,
-            "x": -60,
-            "y": -180,
+            "y": -200,
             "canshot": true,
             "radius": 32
         }
