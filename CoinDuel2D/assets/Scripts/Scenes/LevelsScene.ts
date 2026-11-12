@@ -113,7 +113,7 @@ export class LevelsScene extends Component {
             return;
         }
 
-        // 優先從本地資產庫（manifest 同步結果）讀取關卡目錄
+        // 關卡列表一律來自 levels.json（DataProvider 優先 serverdata，回退 Resources）
         let manager = AssetSyncManager.instance;
         if (!manager || !manager.isValid) {
             manager = this.node.getComponent(AssetSyncManager)
@@ -122,14 +122,8 @@ export class LevelsScene extends Component {
         const sync: AssetSyncManager = manager;
         this._sync = sync;
 
+        // 等本地資產庫還原完成，讓按鈕名稱能使用關卡 JSON 的 id
         sync.whenReady(() => {
-            const cached = sync.listCachedLevelFiles();
-            if (cached.length > 0) {
-                console.log('[Levels] 使用本地資產庫關卡:', cached.length);
-                this._renderLevels(cached);
-                return;
-            }
-            console.log('[Levels] 本地資產庫沒有關卡，回退 levels.json');
             DataProvider.loadJson('levels', (err, data) => {
                 if (err) {
                     console.error('Failed to load levels.json:', err);

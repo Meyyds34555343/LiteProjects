@@ -59,11 +59,16 @@
     "tutorial_l1_drag_a": "빛나는 코인을 드래그해 오른쪽 코인을 치세요",
     "tutorial_l1_drag_b": "좋아요! 한 개 더 쳐서 마지막 한 개만 남기세요",
     "tutorial_l2_intro": "목표: 가운데 장애물을 피해 코인을 쳐내기",
-    "tutorial_l2_drag_a": "장애물에 닿으면 코인이 튕깁니다. 각도를 바꿔 노리세요",
+    "tutorial_l2_drag_a": "첫 번째 타격: 위쪽을 따라 오른쪽 위 코인을 치세요",
+    "tutorial_l2_drag_b": "두 번째 타격: 오른쪽 아래로 내려가 오른쪽 아래 코인을 치세요",
+    "tutorial_l2_drag_c": "마지막 타격: 오른쪽 아래에서 아래쪽 코인을 치세요",
     "tutorial_l3_intro": "목표: 연속 명중으로 점수 배율을 올리기",
     "tutorial_l3_drag_a": "먼저 가운데 코인을 쳐서 콤보를 시작하세요",
     "tutorial_l3_drag_b": "콤보 중에 한 개 더 치면 점수가 더 올라갑니다",
+    "tutorial_l3_drag_c": "콤보를 이어서 왼쪽 아래 코인을 치세요",
+    "tutorial_l3_drag_d": "마지막 타격: 위쪽 코인을 치세요",
     "tutorial_l4_intro": "미니 보스: 장애물을 피해 모든 코인을 제거하세요",
-    "tutorial_l4_drag_a": "첫 번째 타격: 왼쪽 코인을 오른쪽으로 치세요",
-    "tutorial_l4_drag_b": "마지막 타격: 테이블을 비우면 튜토리얼 완료"
+    "tutorial_l4_drag_a": "첫 번째 타격: 왼쪽 아래 코인을 위로 쳐 올리세요",
+    "tutorial_l4_drag_b": "두 번째 타격: 왼쪽 위 코인을 오른쪽으로 치세요",
+    "tutorial_l4_drag_c": "마지막 타격: 오른쪽 아래로 내려가 오른쪽 아래 코인을 치세요"
 }

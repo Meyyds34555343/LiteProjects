@@ -188,27 +188,24 @@ export class TutorialManager extends Component {
     public onCoinDragStart(coin: Node): boolean {
         if (!this._active) return true;
 
-        // 玩家直接去拖硬币时，跳过剩下的介绍气泡——
-        // 否则必须等每个 intro 的自动计时器跑完（4 个道具介绍 = 16 秒拖不动）。
-        this._skipIntroSteps();
-        if (!this._active) return false;
-
         const step = this._steps[this._currentStepIndex];
+
+        // 介紹步驟尚未指定可操作的硬幣
         if (!step || step.type !== 'drag') {
-            // 走到这里说明还在介绍步骤且跳过失败——不要让玩家完全失去操作权。
-            console.log('[Tutorial] allow drag during', step ? step.type : 'no-step');
+            console.log('[Tutorial] drag blocked during intro step');
+            return false;
         }
 
-        // 关键：拖拽步骤一律允许上手（任何硬币），不再因为“拖错了硬币”而静默拒绝。
-        // 教程仍会在结算时用 targetCoin 判定成功/失败，所以教学效果不变，
-        // 但玩家永远不会遇到“怎么点都没反应”的情况。
+        // 拖拽步驟只允許操作提示中的來源硬幣
+        if (coin !== step.sourceCoin) {
+            console.log('[Tutorial] drag blocked: only', step.sourceCoin?.name, 'is allowed');
+            return false;
+        }
+
         this._draggedCoin = coin;
         this._hideGestureHint();
         this._hitTargetThisTurn = false;
         this._snapshotPositions();
-        if (step && step.type === 'drag' && coin !== step.sourceCoin) {
-            console.log('[Tutorial] guiding toward', step.sourceCoin?.name, 'but player grabbed', coin.name);
-        }
         return true;
     }
 
@@ -316,28 +313,6 @@ export class TutorialManager extends Component {
         } else {
             this._beginCurrentStep();
         }
-    }
-
-    /**
-     * 跳过所有连续的介绍步骤，直接进入第一个拖拽步骤。
-     * 玩家主动拖硬币时调用，避免被介绍气泡的自动计时器卡住。
-     */
-    private _skipIntroSteps(): void {
-        let moved = false;
-        while (this._currentStepIndex < this._steps.length
-            && this._steps[this._currentStepIndex].type === 'intro') {
-            this._currentStepIndex++;
-            moved = true;
-        }
-        if (!moved) return;
-
-        this.unscheduleAllCallbacks();
-        this._hideTargetIndicator();
-        if (this._currentStepIndex >= this._steps.length) {
-            this.skipTutorial();
-            return;
-        }
-        this._beginCurrentStep();
     }
 
     /** 开始当前步骤：根据类型展示介绍或拖拽 */

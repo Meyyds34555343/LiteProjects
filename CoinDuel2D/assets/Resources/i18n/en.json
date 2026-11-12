@@ -59,11 +59,16 @@
     "tutorial_l1_drag_a": "Drag the highlighted coin into the coin on the right",
     "tutorial_l1_drag_b": "Nice! Hit one more so only a single coin remains",
     "tutorial_l2_intro": "Goal: steer around the blocker and knock the coins out",
-    "tutorial_l2_drag_a": "Blockers bounce coins back — change your angle and hit the target",
+    "tutorial_l2_drag_a": "First hit: run along the top into the top-right coin",
+    "tutorial_l2_drag_b": "Second hit: go down the right side into the bottom-right coin",
+    "tutorial_l2_drag_c": "Final hit: knock it into the bottom coin",
     "tutorial_l3_intro": "Goal: chained hits raise your score multiplier",
     "tutorial_l3_drag_a": "Hit the centre coin first to start a combo",
     "tutorial_l3_drag_b": "Now hit another while the combo is alive for more points",
+    "tutorial_l3_drag_c": "Keep the combo going — hit the bottom-left coin",
+    "tutorial_l3_drag_d": "Final hit: knock it into the coin at the top",
     "tutorial_l4_intro": "Mini boss: dodge the obstacles and clear every coin",
-    "tutorial_l4_drag_a": "First hit: knock the left coin into the right one",
-    "tutorial_l4_drag_b": "Final hit: clear the table to finish the beginner tutorial"
+    "tutorial_l4_drag_a": "First hit: start from the bottom-left coin and launch it upward",
+    "tutorial_l4_drag_b": "Second hit: knock the top-left coin into the right side",
+    "tutorial_l4_drag_c": "Final hit: go down the right side into the bottom-right coin"
 }

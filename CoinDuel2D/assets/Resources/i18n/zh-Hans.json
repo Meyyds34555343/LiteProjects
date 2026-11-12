@@ -59,11 +59,16 @@
     "tutorial_l1_drag_a": "拖动高亮的硬币，撞向右侧的硬币",
     "tutorial_l1_drag_b": "很好！再撞一枚，只剩最后一枚就过关",
     "tutorial_l2_intro": "目标：绕开中间的障碍物，把硬币撞飞",
-    "tutorial_l2_drag_a": "障碍物会反弹硬币，换一个角度撞向目标",
+    "tutorial_l2_drag_a": "第一击：沿顶部撞向右上角的硬币",
+    "tutorial_l2_drag_b": "第二击：沿右侧向下撞向右下角的硬币",
+    "tutorial_l2_drag_c": "最后一击：从右下角撞向底部的硬币",
     "tutorial_l3_intro": "目标：连续命中可以叠加分数倍率",
     "tutorial_l3_drag_a": "先撞击中间那枚硬币触发连击",
     "tutorial_l3_drag_b": "连击状态下再撞一枚，分数会更高",
+    "tutorial_l3_drag_c": "继续连击，撞向左下角的硬币",
+    "tutorial_l3_drag_d": "最后一击：撞向顶部的硬币",
     "tutorial_l4_intro": "小 Boss 关：躲开障碍，清掉全部硬币",
-    "tutorial_l4_drag_a": "第一击：把左边的硬币撞向右边",
-    "tutorial_l4_drag_b": "最后一击：清空桌面即可完成新手教程"
+    "tutorial_l4_drag_a": "第一击：从左下角的硬币开始，向上撞",
+    "tutorial_l4_drag_b": "第二击：把左上角的硬币撞向右侧",
+    "tutorial_l4_drag_c": "最后一击：沿右侧向下撞向右下角的硬币"
 }

@@ -90,7 +90,10 @@ export const CAMPAIGN_STAGES: CampaignStageConfig[] = [
             introKey: 'tutorial_l2_intro',
             drags: [
                 // Top lane stays clear of the centre blocker and the mud patch.
-                { hintKey: 'tutorial_l2_drag_a', source: 0, target: 1, final: true },
+                { hintKey: 'tutorial_l2_drag_a', source: 0, target: 1 },
+                // Down the right side, then across the bottom to the last coin.
+                { hintKey: 'tutorial_l2_drag_b', source: 1, target: 3 },
+                { hintKey: 'tutorial_l2_drag_c', source: 3, target: 2, final: true },
             ],
         },
     },
@@ -104,7 +107,9 @@ export const CAMPAIGN_STAGES: CampaignStageConfig[] = [
             introKey: 'tutorial_l3_intro',
             drags: [
                 { hintKey: 'tutorial_l3_drag_a', source: 0, target: 2 },
-                { hintKey: 'tutorial_l3_drag_b', source: 2, target: 3, final: true },
+                { hintKey: 'tutorial_l3_drag_b', source: 2, target: 3 },
+                { hintKey: 'tutorial_l3_drag_c', source: 3, target: 4 },
+                { hintKey: 'tutorial_l3_drag_d', source: 4, target: 1, final: true },
             ],
         },
     },
@@ -119,9 +124,11 @@ export const CAMPAIGN_STAGES: CampaignStageConfig[] = [
         tutorial: {
             introKey: 'tutorial_l4_intro',
             drags: [
-                { hintKey: 'tutorial_l4_drag_a', source: 0, target: 1 },
-                // Third coin sits directly below the second; this lane avoids both blockers.
-                { hintKey: 'tutorial_l4_drag_b', source: 1, target: 3, final: true },
+                // Perimeter route: BL -> TL -> TR -> BR. It stays clear of both
+                // blockers and both mud patches, and covers every real coin.
+                { hintKey: 'tutorial_l4_drag_a', source: 2, target: 0 },
+                { hintKey: 'tutorial_l4_drag_b', source: 0, target: 1 },
+                { hintKey: 'tutorial_l4_drag_c', source: 1, target: 3, final: true },
             ],
         },
     },

@@ -132,25 +132,17 @@ export class AssetSyncManager extends Component {
         return Array.from(this._levels.values()).sort((a, b) => a.id - b.id);
     }
 
-    /**
-     * 本地資產庫中的關卡檔名（按 manifest / 快取索引順序）。
-     * 供關卡選擇畫面取代靜態 levels.json。
-     */
-    public listCachedLevelFiles(): string[] {
-        const files: string[] = [];
-        for (const [filename, item] of this._cacheItems) {
-            const kind = item.kind ?? this._guessKind(filename);
-            if (kind !== 'level') continue;
-            const entries = this._fileEntries.get(filename);
-            if (entries && entries.levels.length > 0) files.push(filename);
-        }
-        return files;
-    }
-
     /** 某個關卡檔載入的第一個 LevelConfig.id；找不到時回傳 null。 */
     public getLevelIdForFile(filename: string): number | null {
-        const entries = this._fileEntries.get(filename);
-        return entries && entries.levels.length > 0 ? entries.levels[0] : null;
+        // levels.json 用的是 `1.json`，資產庫索引用的是 `levels/1.json`，兩者都接受
+        const normalized = filename.indexOf('levels/') === 0
+            ? filename
+            : 'levels/' + filename.replace(/^\/+/, '');
+        for (const key of [filename, normalized]) {
+            const entries = this._fileEntries.get(key);
+            if (entries && entries.levels.length > 0) return entries.levels[0];
+        }
+        return null;
     }
 
     /** 等本地快取還原完成後再讀取資料。 */
