@@ -866,11 +866,13 @@ export class GameLogic extends Component {
 
         this._mod?.tick(deltaTime);
 
-        // 1. 持续监测坠落（在任意状态下均可坠落）
-        this.checkCoinFalls();
-
-        // 2. 桌面边界反弹（含缺口侧边）
+        // 1. 桌面边界反弹（含缺口侧边）
+        // 必须先夹回墙内再判定坠落：墙本身没有物理碰撞体，全靠这里做位置约束。
+        // 顺序反了的话，某一帧物理冲过墙外沿就会被误判成「掉进缺口」。
         this._applyWallBounce();
+
+        // 2. 持续监测坠落（在任意状态下均可坠落）
+        this.checkCoinFalls();
 
         // 2.5 泥潭摩擦：硬币中心在泥潭区域内时提高阻尼
         this._applyMudFriction();
@@ -963,45 +965,60 @@ export class GameLogic extends Component {
             const rb = coin.getComponent(RigidBody2D);
             if (!rb) continue;
 
+            // 正在被打飞出场外的硬币由特效接管位置，别把它拉回桌内。
+            const knockCtrl = coin.getComponent(CoinController);
+            if (knockCtrl && knockCtrl.isKnockingOut) continue;
+
             const pos = coin.position;
             const vel = rb.linearVelocity;
             let newX = pos.x;
             let newY = pos.y;
             let newVx = vel.x;
             let newVy = vel.y;
+            /** 速度被反弹（播放音效 / 通知 mod） */
             let bounced = false;
+            /** 只是位置被夹回墙内：硬币已越界但速度朝内，不该每次都没收速度 */
+            let clamped = false;
 
             // 检查硬币当前是否处于某面墙的缺口范围内
             const inGap = (wallSide: number, alongPos: number): boolean =>
                 this.gaps.some(g => g.side === wallSide && Math.abs(alongPos - g.center) < hg);
 
-            // 右墙反弹（缺口处跳过）
-            if (pos.x > halfW && vel.x > 0) {
+            // 注意：墙本身只有 Sprite，没有物理碰撞体，位置约束全靠这里完成。
+            // 所以位置夹回必须是「无条件的」——只要越界就拉回，不能等速度朝外才处理。
+            // 否则硬币被别的硬币挤到墙外、速度又被解算器改成朝内时，
+            // 它会一直留在墙外（墙上看不到缺口），直到被判成掉落。
+            //
+            // 例外：已经穿过缺口、飞离桌面外沿的硬币不能再被拉回来（那等于反悔一次合法掉落）。
+            // 封闭桌面（没有缺口）则不受此限，任何距离都夹回墙内。
+            const closedTable = this.gaps.length === 0;
+            const withinWallBand = (v: number) => Math.abs(v) <= hw + this.coinRadius;
+
+            if (pos.x > halfW && (closedTable || withinWallBand(pos.x))) {
                 if (!inGap(1, pos.y)) {
                     newX = halfW;
-                    newVx = -vel.x * 0.7;
-                    bounced = true;
+                    clamped = true;
+                    if (vel.x > 0) { newVx = -vel.x * 0.7; bounced = true; }
                 }
-            } else if (pos.x < -halfW && vel.x < 0) {
+            } else if (pos.x < -halfW && (closedTable || withinWallBand(pos.x))) {
                 if (!inGap(3, pos.y)) {
                     newX = -halfW;
-                    newVx = -vel.x * 0.7;
-                    bounced = true;
+                    clamped = true;
+                    if (vel.x < 0) { newVx = -vel.x * 0.7; bounced = true; }
                 }
             }
 
-            // 上墙反弹（缺口处跳过）
-            if (pos.y > halfH && vel.y > 0) {
+            if (pos.y > halfH && (closedTable || withinWallBand(pos.y))) {
                 if (!inGap(0, pos.x)) {
                     newY = halfH;
-                    newVy = -vel.y * 0.7;
-                    bounced = true;
+                    clamped = true;
+                    if (vel.y > 0) { newVy = -vel.y * 0.7; bounced = true; }
                 }
-            } else if (pos.y < -halfH && vel.y < 0) {
+            } else if (pos.y < -halfH && (closedTable || withinWallBand(pos.y))) {
                 if (!inGap(2, pos.x)) {
                     newY = -halfH;
-                    newVy = -vel.y * 0.7;
-                    bounced = true;
+                    clamped = true;
+                    if (vel.y < 0) { newVy = -vel.y * 0.7; bounced = true; }
                 }
             }
 
@@ -1011,15 +1028,19 @@ export class GameLogic extends Component {
                 if (this._checkGapSideBounce(pos, vel, hw, hh, hg, out)) {
                     newX = out.x; newY = out.y;
                     newVx = out.vx; newVy = out.vy;
+                    clamped = true;
                     bounced = true;
                 }
+            }
+
+            if (clamped) {
+                coin.setPosition(newX, newY, 0);
+                rb.linearVelocity = new Vec2(newVx, newVy);
             }
 
             if (bounced) {
                 // 撞到墙 → 恢复速度
                 this._restoreSpeed();
-                coin.setPosition(newX, newY, 0);
-                rb.linearVelocity = new Vec2(newVx, newVy);
                 // 硬币与墙碰撞音效
                 SoundManager.instance?.playCollisionWall();
                 this._mod?.onCushionBounce({
@@ -1079,15 +1100,30 @@ export class GameLogic extends Component {
         const hw = this.tableWidth / 2;
         const hh = this.tableHeight / 2;
 
+        // 桌上没有缺口就没有可以掉下去的洞：这种情况下硬币绝不应该被判为掉落。
+        // 新手教程的关卡（1~4 关）都是 gaps=[] 的封闭桌面，
+        // 以前这里只要硬币越过桌面外沿就判定掉落，于是被挤到墙外的硬币
+        // 会报「硬币掉出桌面了」，而玩家看到的墙上根本没有洞。
+        const canFall = this.gaps.length > 0;
+
         for (let i = this.coinGroup.children.length - 1; i >= 0; i--) {
             const coin = this.coinGroup.children[i];
-            const pos = coin.position;
+
+            // 只有真正能掉落的实体才参与判定。coinGroup 里还挂着
+            // RunAura / DragArrow / WorldStats 等装饰节点，它们没有刚体，
+            // 不该被当成硬币计数或算成掉落。
+            if (!coin.getComponent(RigidBody2D)) continue;
 
             // 正在被打飞出界的硬币不判为掉落（由打飞特效自行处理）
             const ctrl = coin.getComponent(CoinController);
             if (ctrl && ctrl.isKnockingOut) continue;
 
-            // 硬币中点离开桌面范围 → 掉落
+            if (!canFall) continue;
+
+            // 硬币中点越过桌面外沿 → 掉落。
+            // _applyWallBounce 已在前面把「撞墙但没缺口」的硬币夹回墙内，
+            // 所以走到这里还在墙外的，一定是真的从缺口飞出去了。
+            const pos = coin.position;
             if (Math.abs(pos.x) > hw || Math.abs(pos.y) > hh) {
                 this.onCoinFall(coin);
             }

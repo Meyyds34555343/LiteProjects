@@ -468,8 +468,9 @@ export class TutorialManager extends Component {
     /** 记录所有硬币位置快照 */
     private _snapshotPositions(): void {
         this._coinSnapshots = [];
-        const coins = this.gameLogic?.coinGroup?.children ?? [];
-        for (const coin of coins) {
+        // 只记录真正的硬币：coinGroup 下还有 RunAura / DragArrow / WorldStats 等装饰节点，
+        // 把它们一起快照并在失败时还原，会让光效/拖拽箭头被拖回旧位置。
+        for (const coin of this._getRealCoins()) {
             this._coinSnapshots.push({
                 node: coin,
                 x: coin.position.x,
