@@ -106,6 +106,11 @@ export class GameLogic extends Component {
     public get isWaitingPlayer(): boolean {
         return this._currentPhase === GamePhase.WAITING_PLAYER;
     }
+
+    /** 是否已指定下一發唯一可操作的硬幣（鏡頭還原期間）。 */
+    public get hasPendingShooter(): boolean {
+        return !!this._pendingLockedCoin || !!this._lockedCoin;
+    }
     public coinHitCount: number = 0;
     public coinFallCount: number = 0;
     private _activeShotCoin: Node | null = null;
@@ -890,15 +895,18 @@ export class GameLogic extends Component {
 
         // 5. 空闲提示：由 TutorialManager 处理
 
-        // 5. 摄像机还原后，启用待命的下一次击打
+        // 5. 摄像机还原后，只启用被击中的那一枚硬币作为下一发起手
         if (this._pendingLockedCoin && this.hitEffectManager?.isCameraAtRest) {
-            console.log('[Game] enabling pending locked coin:', this._pendingLockedCoin.name);
-            const ctrl = this._pendingLockedCoin.getComponent(CoinController);
-            if (ctrl) {
-                ctrl.allowedOperation = true;
-                ctrl.showIndicator(true);
+            const next = this._pendingLockedCoin;
+            console.log('[Game] enabling pending locked coin:', next.name);
+            for (const coin of this.coinGroup.children) {
+                const ctrl = coin.getComponent(CoinController);
+                if (!ctrl) continue;
+                const allowed = coin === next;
+                ctrl.allowedOperation = allowed;
+                ctrl.showIndicator(allowed);
             }
-            this._run?.attachAura(this.coinGroup, this._pendingLockedCoin);
+            this._run?.attachAura(this.coinGroup, next);
             this._captureShot();
             this._pendingLockedCoin = null;
         }
@@ -1434,6 +1442,9 @@ export class GameLogic extends Component {
      */
     public startTimeReverse(): void {
         if (this.currentPhase === GamePhase.REVERSING) return;
+        // 玩家可能剛看到失誤提示就立刻點擊回退；Tween.stopAll() 會停掉提示的淡出，
+        // 必須先主動清除，否則提示會殘留在畫面上。
+        this._failHints?.clear();
         Tween.stopAll();
         this.hitEffectManager?.cancelFoulReplay();
         this._disarmTapRestart();

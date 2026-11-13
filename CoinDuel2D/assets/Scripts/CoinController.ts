@@ -433,16 +433,22 @@ export class CoinController extends Component {
 
     private _onPointerDown(event: EventTouch): void {
         if (!this._allowedOperation) {
-            // 教程进行中时，永远不要因为残留的 allowedOperation=false 而静默拒绝。
-            // 出手后 GameLogic 会把全部硬币锁住；若某条结算路径没解锁，
-            // 玩家就会完全拖不动。这里在 WAITING_PLAYER 阶段自动恢复。
+            // 出手后 GameLogic 会锁住全部硬币，只解锁「被击中的下一枚」。
+            // 只有尚未指定下一枚时，才允许在 WAITING_PLAYER 阶段自救解锁；
+            // 否则玩家可以绕过锁定，拖动其他硬币。
             const gl = this._gameLogic;
             const waiting = gl?.isWaitingPlayer === true;
-            if (waiting) {
+            const hasNextShooter = gl?.hasPendingShooter === true;
+            if (waiting && !hasNextShooter) {
                 console.warn('[CoinController] allowedOperation=false while waiting — unlocking', this.node.name);
                 this._allowedOperation = true;
             } else {
-                console.log('[CoinController] tap ignored, allowedOperation=false, waiting=', waiting);
+                console.log(
+                    '[CoinController] tap ignored, allowedOperation=false, waiting=',
+                    waiting,
+                    'hasNextShooter=',
+                    hasNextShooter,
+                );
                 return;
             }
         }

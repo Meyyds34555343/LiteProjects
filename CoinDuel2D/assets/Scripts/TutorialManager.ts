@@ -246,14 +246,11 @@ export class TutorialManager extends Component {
         const hitCount = this.gameLogic?.coinHitCount ?? 0;
         const fallCount = this.gameLogic?.coinFallCount ?? 0;
 
-        // 成功条件：本回合撞到了硬币、且没有硬币掉出桌面。
-        // 之前要求必须精确命中「指定那一枚」目标币，但在物理弹球里，
-        // 球撞到哪一枚取决于角度、旋转和连锁反应，玩家很难精确复现，
-        // 于是经常出现「我明明撞到了却说我打错」的挫败感。
-        // 这一步的教学目的是「拖拽出手」，不是「精确打某枚」，所以放宽。
-        const hitSomething = this._hitTargetThisTurn || hitCount > 0;
+        // 教程要求必须命中当前步骤指定的目标硬币，且没有硬币掉出桌面。
+        // 否则按出手前的快照还原这一发，让玩家重试当前步骤。
+        const hitTarget = this._hitTargetThisTurn;
 
-        if (hitSomething && fallCount === 0) {
+        if (hitTarget && fallCount === 0) {
             // ✅ 撞到了硬币 → 继续正常结算（出手硬币被打飞消失）
             this._foulCount = 0;
             // 在推进索引之前，记录当前步是否为最终步
@@ -283,6 +280,9 @@ export class TutorialManager extends Component {
 
             if (fallCount > 0) {
                 this._showHint('tutorial_foul_fall');
+            } else if (hitCount > 0) {
+                // 撞到了别的硬币，没有按教程指定的顺序击打
+                this._showHint('tutorial_wrong_target');
             } else {
                 // 没撞到任何硬币（空挥）
                 this._showHint('tutorial_miss');
@@ -545,7 +545,11 @@ export class TutorialManager extends Component {
         const coins = this._getRealCoins();
         if (coins.length < 2) return null;
 
-        const source = coins[0];
+        // 優先以目前唯一可操作的硬幣（被撞中的下一枚）作為提示來源
+        const source = coins.find((coin) => {
+            const ctrl = coin.getComponent(CoinController);
+            return ctrl?.allowedOperation === true;
+        }) ?? coins[0];
         if (!source || !source.isValid) return null;
 
         let closestTarget: Node | null = null;

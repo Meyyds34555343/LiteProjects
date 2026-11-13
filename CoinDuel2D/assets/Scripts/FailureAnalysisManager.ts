@@ -1,10 +1,26 @@
-import { _decorator, Color, Component, Label, Node, tween, UIOpacity, UITransform, Vec3 } from 'cc';
+import { _decorator, Color, Component, Label, Node, tween, Tween, UIOpacity, UITransform, Vec3 } from 'cc';
 
 const { ccclass } = _decorator;
 
 /** 失誤時在撞點上方浮出可執行的提示，0.6 秒淡出。 */
 @ccclass('FailureAnalysisManager')
 export class FailureAnalysisManager extends Component {
+    /** 目前仍在顯示中的提示節點。 */
+    private _hints: Node[] = [];
+
+    /** 立即清除所有失誤提示（例如玩家馬上點擊回退時）。 */
+    public clear(): void {
+        const hints = this._hints;
+        this._hints = [];
+        for (const node of hints) {
+            if (!node || !node.isValid) continue;
+            Tween.stopAllByTarget(node);
+            const opacity = node.getComponent(UIOpacity);
+            if (opacity) Tween.stopAllByTarget(opacity);
+            node.destroy();
+        }
+    }
+
     public explain(
         parent: Node | null,
         x: number,
@@ -42,6 +58,7 @@ export class FailureAnalysisManager extends Component {
         const node = new Node('FailHint');
         node.layer = parent.layer;
         parent.addChild(node);
+        this._hints.push(node);
         node.setPosition(x, y, 0);
         node.setScale(0.4, 0.4, 1);
         const ui = node.addComponent(UITransform);
@@ -60,7 +77,9 @@ export class FailureAnalysisManager extends Component {
         label.outlineWidth = 2;
         const opacity = node.addComponent(UIOpacity);
         tween(node).to(0.12, { scale: new Vec3(1.05, 1.05, 1) }).to(0.08, { scale: new Vec3(1, 1, 1) }).start();
-        tween(opacity).delay(0.2).to(0.4, { opacity: 0 }).call(() => {
+        tween(opacity).delay(0.8).to(0.4, { opacity: 0 }).call(() => {
+            const index = this._hints.indexOf(node);
+            if (index >= 0) this._hints.splice(index, 1);
             if (node.isValid) node.destroy();
         }).start();
     }
