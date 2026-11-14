@@ -1,4 +1,4 @@
-import { _decorator, Component, Node, Vec2, Vec3, AnimationComponent, RigidBody2D, tween } from 'cc';
+import { _decorator, CircleCollider2D, Component, Node, Vec2, Vec3, AnimationComponent, RigidBody2D, UITransform, tween } from 'cc';
 import { MudController } from './MudController';
 import { SoundManager } from '../SoundManager';
 const { ccclass } = _decorator;
@@ -14,6 +14,8 @@ export interface ExplosionParams {
     tableWidth: number;
     tableHeight: number;
     wallThickness: number;
+    /** 这次爆炸的炸弹节点本身，不参与洗牌 */
+    exclude?: Node | null;
 }
 
 @ccclass('Bomb')
@@ -82,7 +84,7 @@ export class Bomb extends Component {
 
     /**
      * 在指定位置执行爆炸效果（静态方法，供炸弹硬币等外部调用）
-     * - 推开范围内硬币（径向冲量，线性衰减）
+     * - 打乱场上硬币的位置（洗牌，代替原来的径向冲量）
      * - 销毁范围内障碍物（Blocker）
      * - 推开范围内泥潭（通过 MudController 设置速度）
      */
@@ -90,28 +92,9 @@ export class Bomb extends Component {
         const { pushRadius, pushForce, coinGroup, props, muds, mudPushFactor } = params;
         const r2 = pushRadius * pushRadius;
 
-        // 对范围内硬币施加推力
+        // 爆炸洗牌：随机重排所有硬币位置，不重叠、不出界
         if (coinGroup) {
-            for (const coin of coinGroup.children) {
-                // 已掉出桌面并隐藏的硬币不再接受爆炸推力
-                if (!coin.active) continue;
-                const rb = coin.getComponent(RigidBody2D);
-                if (!rb) continue;
-                const coinPos = coin.worldPosition;
-                const dx = coinPos.x - bombPos.x;
-                const dy = coinPos.y - bombPos.y;
-                const dist2 = dx * dx + dy * dy;
-                if (dist2 > r2 || dist2 < 0.001) continue;
-
-                const dist = Math.sqrt(dist2);
-                const strength = 1 - dist / pushRadius;
-                const nx = dx / dist;
-                const ny = dy / dist;
-                rb.applyLinearImpulseToCenter(
-                    new Vec2(nx * pushForce * strength, ny * pushForce * strength),
-                    true,
-                );
-            }
+            Bomb._shuffleCoins(coinGroup, props || [], params);
         }
 
         // 销毁范围内的障碍物（Blocker），陷阱（Mud）不受影响
@@ -152,5 +135,109 @@ export class Bomb extends Component {
                 }
             }
         }
+    }
+
+    /**
+     * 爆炸洗牌：把所有仍在场上的硬币随机放到桌面内的空位。
+     * - 不与其它硬币 / 障碍物 / 泥潭重叠
+     * - 不超出围墙边界
+     * - 清零速度，避免洗牌后继续运动
+     */
+    private static _shuffleCoins(coinGroup: Node, props: Node[], params: ExplosionParams): void {
+        const candidates = coinGroup.children.filter((coin) =>
+            !!coin && coin.isValid && coin.active
+            && coin !== params.exclude
+            && !!coin.getComponent(RigidBody2D),
+        );
+        if (candidates.length === 0) return;
+
+        const halfW = params.tableWidth / 2;
+        const halfH = params.tableHeight / 2;
+        const wall = params.wallThickness;
+        const gap = 8;
+        const groupWorld = coinGroup.worldPosition;
+
+        // 场上固定道具占用的位置（转换到 coinGroup 的局部坐标）
+        const occupied: { x: number; y: number; r: number }[] = [];
+        for (const prop of props) {
+            if (!prop || !prop.isValid || !prop.active) continue;
+            const p = prop.worldPosition;
+            occupied.push({
+                x: p.x - groupWorld.x,
+                y: p.y - groupWorld.y,
+                r: Bomb._nodeRadius(prop, 48),
+            });
+        }
+
+        for (const coin of candidates) {
+            const r = Bomb._nodeRadius(coin, 32);
+            const minX = -halfW + wall + r;
+            const maxX = halfW - wall - r;
+            const minY = -halfH + wall + r;
+            const maxY = halfH - wall - r;
+            if (minX > maxX || minY > maxY) continue;
+
+            let spot: { x: number; y: number } | null = null;
+
+            // 随机尝试
+            for (let attempt = 0; attempt < 300; attempt++) {
+                const x = minX + Math.random() * (maxX - minX);
+                const y = minY + Math.random() * (maxY - minY);
+                if (Bomb._isFree(x, y, r, occupied, gap)) {
+                    spot = { x, y };
+                    break;
+                }
+            }
+
+            // 随机失败时用网格兜底
+            if (!spot) {
+                const step = Math.max(8, r);
+                outer:
+                for (let y = minY; y <= maxY; y += step) {
+                    for (let x = minX; x <= maxX; x += step) {
+                        if (Bomb._isFree(x, y, r, occupied, gap)) {
+                            spot = { x, y };
+                            break outer;
+                        }
+                    }
+                }
+            }
+
+            // 实在找不到就保留原位，避免把硬币挤出桌面
+            if (!spot) {
+                spot = { x: coin.position.x, y: coin.position.y };
+            }
+
+            coin.setPosition(spot.x, spot.y, 0);
+            const rb = coin.getComponent(RigidBody2D);
+            if (rb) {
+                rb.linearVelocity = new Vec2(0, 0);
+                rb.angularVelocity = 0;
+            }
+            occupied.push({ x: spot.x, y: spot.y, r });
+        }
+    }
+
+    private static _isFree(
+        x: number,
+        y: number,
+        r: number,
+        occupied: { x: number; y: number; r: number }[],
+        gap: number,
+    ): boolean {
+        for (const o of occupied) {
+            const dx = x - o.x;
+            const dy = y - o.y;
+            if (dx * dx + dy * dy < (r + o.r + gap) * (r + o.r + gap)) return false;
+        }
+        return true;
+    }
+
+    private static _nodeRadius(node: Node, fallback: number): number {
+        const collider = node.getComponent(CircleCollider2D);
+        if (collider && collider.radius > 0) return collider.radius;
+        const ui = node.getComponent(UITransform);
+        if (ui && ui.width > 0) return ui.width / 2;
+        return fallback;
     }
 }
