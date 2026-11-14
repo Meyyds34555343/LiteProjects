@@ -1,7 +1,7 @@
 import { sys } from 'cc';
 import { LevelState } from '../LevelData';
 import { LevelManager } from '../LevelManager';
-import { CAMPAIGN_STAGES, getStage, starsFor, TUTORIAL_STAGE_COUNT } from './CampaignConfig';
+import { DEFAULT_STAGE_STARS, getStage, starsFor } from './CampaignConfig';
 
 const STORAGE_KEY = 'coinduel_campaign_v1';
 
@@ -21,8 +21,8 @@ function emptySave(): CampaignSave {
  * Persistent campaign progress (stars, best score, unlocking).
  *
  * Unlock rule: stage 1 is always open; stage N opens once stage N-1 has at
- * least one star. Stages beyond the tutorial block fall back to the legacy
- * LevelManager sequential unlocking.
+ * least one star. This applies to the whole campaign; stages without an
+ * explicit CampaignStageConfig use DEFAULT_STAGE_STARS so clears are still saved.
  */
 export class CampaignProgress {
     private static _data: CampaignSave | null = null;
@@ -87,9 +87,10 @@ export class CampaignProgress {
      * kept across replays so the level select screen stays stable.
      */
     public static recordClear(stageId: number, score: number): number {
+        // 只有教程段有完整 stage 配置；後續關卡用預設門檻，
+        // 但仍必須記錄星星，否則永遠無法解鎖下一關。
         const stage = getStage(stageId);
-        if (!stage) return 0;
-        const earned = starsFor(stage.stars, score, true);
+        const earned = starsFor(stage?.stars ?? DEFAULT_STAGE_STARS, score, true);
         const key = String(stageId);
         const previous = CampaignProgress.getStars(stageId);
         CampaignProgress.data.stars[key] = Math.max(previous, earned);
@@ -98,16 +99,17 @@ export class CampaignProgress {
         return earned;
     }
 
-    /** Map campaign progress onto LevelManager's state array. */
+    /** Map campaign progress onto LevelManager's state array (all stages, not just the tutorial block). */
     public static applyToLevelManager(): void {
-        for (const stage of CAMPAIGN_STAGES) {
-            const stars = CampaignProgress.getStars(stage.id);
+        const count = LevelManager.getLevelFiles().length;
+        for (let stageId = 1; stageId <= count; stageId++) {
+            const stars = CampaignProgress.getStars(stageId);
             let state: LevelState;
             if (stars > 0) state = LevelState.Passed;
-            else if (CampaignProgress.isUnlocked(stage.id)) state = LevelState.Unlocked;
+            else if (CampaignProgress.isUnlocked(stageId)) state = LevelState.Unlocked;
             else state = LevelState.Locked;
             // setLevelState clamps to the existing array length.
-            LevelManager.setLevelState(stage.id - 1, state);
+            LevelManager.setLevelState(stageId - 1, state);
         }
     }
 

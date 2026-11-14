@@ -63,6 +63,13 @@ export interface CampaignStageConfig {
 /** Number of stages that carry the beginner tutorial. */
 export const TUTORIAL_STAGE_COUNT = 4;
 
+/**
+ * Fallback star thresholds for stages that do not have an explicit
+ * CampaignStageConfig (i.e. stages after the tutorial block).
+ * A clear is always worth at least one star, which is enough to unlock the next stage.
+ */
+export const DEFAULT_STAGE_STARS: StageStarRule = { two: 5, three: 9 };
+
 export const CAMPAIGN_STAGES: CampaignStageConfig[] = [
     {
         id: 1,
