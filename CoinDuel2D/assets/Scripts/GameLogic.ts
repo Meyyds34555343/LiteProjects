@@ -383,7 +383,8 @@ export class GameLogic extends Component {
         if (!this.coinGroup) return 0;
         let count = 0;
         for (const child of this.coinGroup.children) {
-            if (child.getComponent(CoinController)) count++;
+            // 掉出桌面后被隐藏的硬币不再计入剩余硬币
+            if (child.active && child.getComponent(CoinController)) count++;
         }
         return count;
     }
@@ -959,6 +960,9 @@ export class GameLogic extends Component {
     // 检查所有硬币是否都停下了
     private isAllCoinsStopped(): boolean {
         for (let coin of this.coinGroup.children) {
+            // 掉落后被隐藏的硬币刚体会被禁用，速度永远不会再衰减；
+            // 如果继续参与判定，游戏会永远停在“未静止”而无法操作。
+            if (!coin.active) continue;
             let rb = coin.getComponent(RigidBody2D);
             if (rb && rb.linearVelocity.length() > this.speedThreshold) {
                 return false; // 只要有一个还在动，就不算静止
@@ -1279,8 +1283,14 @@ export class GameLogic extends Component {
                 }
 
                 // 锁定被撞硬币为下一发起手子弹
-                this._lockedCoin = this._lastHitCoin;
-                this._continueWithLockedCoin();
+                if (this._lastHitCoin) {
+                    this._lockedCoin = this._lastHitCoin;
+                    this._continueWithLockedCoin();
+                } else {
+                    // 炸彈連鎖等沒有「被撞中的硬幣」：回到可自由選擇的等待狀態
+                    console.log('[Game] no hit coin after explosion; unlocking all coins');
+                    this.waitingPlayerOperation();
+                }
             };
 
             const shotCoin = this._activeShotCoin;
@@ -1342,15 +1352,21 @@ export class GameLogic extends Component {
 
                     let coinCount = 0;
                     for (const child of this.coinGroup.children) {
-                        if (child.getComponent(CoinController)) coinCount++;
+                        if (child.active && child.getComponent(CoinController)) coinCount++;
                     }
                     if (coinCount <= 1) {
                         this._handleGameWin();
                         return;
                     }
 
-                    this._lockedCoin = this._lastHitCoin;
-                    this._continueWithLockedCoin();
+                    if (this._lastHitCoin) {
+                        this._lockedCoin = this._lastHitCoin;
+                        this._continueWithLockedCoin();
+                    } else {
+                        // 炸彈連鎖等沒有「被撞中的硬幣」：回到可自由選擇的等待狀態
+                        console.log('[Game] no hit coin after explosion; unlocking all coins');
+                        this.waitingPlayerOperation();
+                    }
                 };
 
                 const shotCoin = this._activeShotCoin;

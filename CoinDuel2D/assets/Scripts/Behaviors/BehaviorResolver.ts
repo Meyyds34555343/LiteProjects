@@ -45,6 +45,8 @@ export class BehaviorResolver {
         if (!coins) return;
 
         for (const coin of coins) {
+            // 掉落后隐藏的硬币不参与被动行为 tick
+            if (!coin.active) continue;
             const behaviors = coin.getComponents(BehaviorBase);
             for (const behavior of behaviors) {
                 if (!behavior.enabled || behavior.mode !== 'passive') continue;

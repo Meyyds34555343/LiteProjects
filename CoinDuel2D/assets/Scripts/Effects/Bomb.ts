@@ -93,6 +93,8 @@ export class Bomb extends Component {
         // 对范围内硬币施加推力
         if (coinGroup) {
             for (const coin of coinGroup.children) {
+                // 已掉出桌面并隐藏的硬币不再接受爆炸推力
+                if (!coin.active) continue;
                 const rb = coin.getComponent(RigidBody2D);
                 if (!rb) continue;
                 const coinPos = coin.worldPosition;
