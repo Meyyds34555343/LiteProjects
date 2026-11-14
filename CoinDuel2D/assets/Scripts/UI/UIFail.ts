@@ -1,4 +1,5 @@
 import { _decorator, Button, Component, Label, Node } from 'cc';
+import { I18n } from '../I18n';
 const { ccclass, property } = _decorator;
 
 @ccclass('UIFail')
@@ -35,7 +36,7 @@ export class UIFail extends Component {
         }
         if (this.btnRetry) {
             const retryLabel = this.btnRetry.getComponentInChildren(Label);
-            if (retryLabel) retryLabel.string = '重試本關';
+            if (retryLabel) retryLabel.string = I18n.t('fail_retry_level');
             this.btnRetry.on(Button.EventType.CLICK, () => {
                 this.close();
                 if (this.onBtnRetryClick) this.onBtnRetryClick();
@@ -43,7 +44,13 @@ export class UIFail extends Component {
         }
     }
 
-    public show(level:number, score:number, time:number){
+    /** 修改重试按钮文字（天梯模式显示“重新开始”）。 */
+    public setRetryText(text: string): void {
+        const retryLabel = this.btnRetry?.getComponentInChildren(Label);
+        if (retryLabel) retryLabel.string = text;
+    }
+
+    public show(level:number, score:number, time:number, retryText?: string){
         if (this.level) this.level.string = level.toString();
         if (this.score) this.score.string = score.toString();
         if (this.time) {
@@ -55,6 +62,8 @@ export class UIFail extends Component {
         }
         if (this.btnRetry) this.btnRetry.active = true;
         this.node.active = true;
+        // 首次弹出时 node.active=true 才触发 onLoad，必须在激活后再覆盖默认按钮文案
+        if (retryText) this.setRetryText(retryText);
     }
 
     public close(){

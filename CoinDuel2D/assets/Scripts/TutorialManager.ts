@@ -72,7 +72,7 @@ export class TutorialManager extends Component {
     private _active: boolean = false;
     private _steps: ResolvedStep[] = [];
     private _currentStepIndex: number = 0;
-    private _coinSnapshots: { node: Node; x: number; y: number }[] = [];
+    private _coinSnapshots: { node: Node; x: number; y: number; active: boolean }[] = [];
     private _hitTargetThisTurn: boolean = false;
     private _foulCount: number = 0;
     private _wasLastStep: boolean = false;
@@ -475,6 +475,7 @@ export class TutorialManager extends Component {
                 node: coin,
                 x: coin.position.x,
                 y: coin.position.y,
+                active: coin.active,
             });
         }
     }
@@ -483,6 +484,8 @@ export class TutorialManager extends Component {
     private _restorePositions(): void {
         for (const snap of this._coinSnapshots) {
             if (snap.node && snap.node.isValid) {
+                // 掉落时被隐藏的硬币在重试时恢复显示
+                snap.node.active = snap.active;
                 snap.node.setPosition(snap.x, snap.y, 0);
                 // 清除速度
                 const rb = snap.node.getComponent(RigidBody2D);

@@ -29,6 +29,8 @@
     "game_time": "Time",
     "game_exit": "Exit",
     "game_retry": "Retry",
+    "ladder_restart": "Restart",
+    "fail_retry_level": "Retry Level",
     "game_next_level": "Next Level",
     "game_level_complete": "Level Complete!",
     "game_leaderboard": "Leaderboard",

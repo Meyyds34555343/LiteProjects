@@ -29,6 +29,8 @@
     "game_time": "시간",
     "game_exit": "나가기",
     "game_retry": "재시도",
+    "ladder_restart": "다시 시작",
+    "fail_retry_level": "재시도",
     "game_next_level": "다음 스테이지",
     "game_level_complete": "스테이지 클리어!",
     "game_leaderboard": "리더보드",

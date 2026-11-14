@@ -29,6 +29,8 @@
     "game_time": "耗时",
     "game_exit": "退出",
     "game_retry": "重试",
+    "ladder_restart": "重新开始",
+    "fail_retry_level": "重试本关",
     "game_next_level": "下一关",
     "game_level_complete": "恭喜过关！",
     "game_leaderboard": "排行榜",

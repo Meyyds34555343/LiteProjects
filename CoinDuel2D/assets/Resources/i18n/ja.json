@@ -29,6 +29,8 @@
     "game_time": "時間",
     "game_exit": "退出",
     "game_retry": "リトライ",
+    "ladder_restart": "最初から",
+    "fail_retry_level": "リトライ",
     "game_next_level": "次のステージ",
     "game_level_complete": "ステージクリア！",
     "game_leaderboard": "ランキング",

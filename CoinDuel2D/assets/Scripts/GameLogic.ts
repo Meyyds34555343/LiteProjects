@@ -173,6 +173,12 @@ export class GameLogic extends Component {
     /** 教程管理器引用（由 GameScene 注入，可为 null） */
     public tutorialManager: TutorialManager | null = null;
 
+    /**
+     * 天梯模式：任何失敗的擊打（空揮 / 掉落 / 撞多枚）在物理停止後
+     * 直接結算失敗面板，不進入點擊倒流流程。
+     */
+    public failImmediately: boolean = false;
+
     /** 教程模式下是否允许拖动这枚硬币 */
     public canLaunchCoin(coin: Node): boolean {
         if (this.tutorialManager?.isActive()) {
@@ -972,6 +978,8 @@ export class GameLogic extends Component {
         for (const coin of this.coinGroup.children) {
             const rb = coin.getComponent(RigidBody2D);
             if (!rb) continue;
+            // 掉落后已隐藏的硬币不再参与墙壁约束
+            if (!coin.active) continue;
 
             // 正在被打飞出场外的硬币由特效接管位置，别把它拉回桌内。
             const knockCtrl = coin.getComponent(CoinController);
@@ -1122,6 +1130,9 @@ export class GameLogic extends Component {
             // 不该被当成硬币计数或算成掉落。
             if (!coin.getComponent(RigidBody2D)) continue;
 
+            // 已因掉落而隐藏的硬币不再重复判定
+            if (!coin.active) continue;
+
             // 正在被打飞出界的硬币不判为掉落（由打飞特效自行处理）
             const ctrl = coin.getComponent(CoinController);
             if (ctrl && ctrl.isKnockingOut) continue;
@@ -1149,7 +1160,12 @@ export class GameLogic extends Component {
             body.linearVelocity = new Vec2(0, 0);
             body.angularVelocity = 0;
         }
-        this._mod?.onCoinFall({ coin, x: coin.position.x, y: coin.position.y });
+        const x = coin.position.x;
+        const y = coin.position.y;
+        // 立刻移出画面，避免硬币停在缺口/墙外看起来像卡住。
+        // 不直接 destroy：倒流/教程重试需要按快照把它恢复回来。
+        coin.active = false;
+        this._mod?.onCoinFall({ coin, x, y });
     }
 
     /** 被 CoinController 调用：记录当前弹射的硬币 */
@@ -1290,6 +1306,10 @@ export class GameLogic extends Component {
 
         // 失敗不開結算面板：點一下就把這一拍還原。
         if (this.coinFallCount > 0) {
+            if (this.failImmediately) {
+                this._handleGameOver();
+                return;
+            }
             const fallen = this._foulCoin ?? this._activeShotCoin;
             this._failHints?.explainFall(
                 this.coinGroup,
@@ -1303,6 +1323,10 @@ export class GameLogic extends Component {
 
         switch (this.coinHitCount) {
             case 0: {
+                if (this.failImmediately) {
+                    this._handleGameOver();
+                    return;
+                }
                 const shot = this._activeShotCoin;
                 this._failHints?.explain(this.coinGroup, shot?.position.x ?? 0, shot?.position.y ?? 0, 0, null, shot);
                 this._armTapRestart();
@@ -1344,6 +1368,10 @@ export class GameLogic extends Component {
             }
 
             default: {
+                if (this.failImmediately) {
+                    this._handleGameOver();
+                    return;
+                }
                 const hem = this.hitEffectManager;
                 const coin = this._foulCoin;
                 const shot = this._activeShotCoin;
@@ -1455,6 +1483,8 @@ export class GameLogic extends Component {
         this._rewindFrom = [];
         for (const snap of this._shotSnapshot) {
             if (!snap.node.isValid) continue;
+            // 掉落后被隐藏的硬币在倒流开始时重新显示，随插值一起飞回原位
+            snap.node.active = true;
             this._rewindFrom.push({
                 node: snap.node,
                 x: snap.node.position.x,
@@ -1489,6 +1519,7 @@ export class GameLogic extends Component {
         if (PhysicsSystem2D.instance) PhysicsSystem2D.instance.enable = true;
         for (const item of this._rewindFrom) {
             if (!item.node.isValid) continue;
+            item.node.active = true;
             item.node.setPosition(item.toX, item.toY, 0);
             const body = item.node.getComponent(RigidBody2D);
             if (body) {

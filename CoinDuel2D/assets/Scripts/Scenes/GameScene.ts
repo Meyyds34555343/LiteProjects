@@ -89,6 +89,8 @@ export class GameScene extends Component {
         this.level = 1;
         this.uiManager.setLevel(this.level);
         this.gameLogic.coinPrefab = this.coinPrefab;
+        // 天梯模式：任何失敗擊打在物理停止後直接彈出失敗面板
+        this.gameLogic.failImmediately = GameScene.mode === GameMode.Ladder;
         this.gameLogic.score = 0;
         this.uiManager.setScore(0);
 
@@ -218,6 +220,14 @@ export class GameScene extends Component {
             this.uiManager.uiFail.onBtnRetryClick = () => {
                 this.uiManager.closeAllOverlays();
                 this.uiManager.showPlayingHUD();
+                if (GameScene.mode === GameMode.Ladder) {
+                    // 天梯模式失败：重新从第一关开始
+                    this.level = 1;
+                    this.uiManager.setLevel(1);
+                    LevelManager.clear();
+                    this.startNewRound();
+                    return;
+                }
                 const levelData = LevelManager.getCurrent();
                 if (levelData) {
                     this._initFromLevel(levelData);
@@ -262,7 +272,12 @@ export class GameScene extends Component {
             const uiFail = this.uiManager.uiFail;
             const currentLevel = this._levelIndex >= 0 ? this._levelIndex + 1 : this.level;
             if (uiFail) {
-                uiFail.show(currentLevel, this.gameLogic.score, duration);
+                uiFail.show(
+                    currentLevel,
+                    this.gameLogic.score,
+                    duration,
+                    I18n.t(GameScene.mode === GameMode.Ladder ? 'ladder_restart' : 'fail_retry_level'),
+                );
             }
         };
 
