@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CoinDuel 美术检查器</title>
+<meta name="description" content="拖入 AI 生成的 PNG，自动去背、质检、加立体感。纯浏览器运行，不用装任何东西。">
+<style>
+  :root{
+    --bg:#12131a; --card:#1c1e28; --card2:#242736; --line:#2e3243;
+    --fg:#e9eaf2; --muted:#8b8fa6; --accent:#4c6fff; --ok:#2ecc71;
+    --bad:#ff5d5d; --warn:#f0b429;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--fg); min-height:100vh;
+    font:15px/1.6 "Segoe UI","Microsoft JhengHei",system-ui,-apple-system,sans-serif;
+    padding:28px 18px 60px;
+  }
+  .wrap{max-width:940px;margin:0 auto}
+  header{text-align:center;margin-bottom:26px}
+  h1{font-size:26px;letter-spacing:.4px;margin-bottom:6px}
+  .sub{color:var(--muted);font-size:13.5px}
+  .badge{
+    display:inline-block;margin-top:10px;padding:3px 10px;border-radius:20px;
+    background:rgba(76,111,255,.14);color:#8fa8ff;font-size:11.5px;
+    border:1px solid rgba(76,111,255,.3)
+  }
+
+  #drop{
+    border:2px dashed #363b4f;border-radius:16px;background:var(--card);
+    padding:44px 20px;text-align:center;cursor:pointer;
+    transition:border-color .15s,background .15s;
+  }
+  #drop:hover{border-color:#4a5170;background:#20222e}
+  #drop.over{border-color:var(--accent);background:rgba(76,111,255,.08)}
+  #drop.has-file{border-style:solid;border-color:#3a4060}
+  #dropIcon{font-size:34px;margin-bottom:10px;opacity:.65}
+  #dropText{color:var(--muted);font-size:14px}
+  #dropText b{color:var(--fg);font-weight:600}
+  #fileName{color:var(--fg);font-size:15px;font-weight:600;margin-bottom:3px;word-break:break-all}
+
+  .row{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap}
+  .field{flex:1;min-width:190px}
+  label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:5px;letter-spacing:.3px}
+  select,input[type=text]{
+    width:100%;background:var(--card2);color:var(--fg);border:1px solid var(--line);
+    border-radius:9px;padding:10px 12px;font-size:14px;font-family:inherit;outline:none;
+  }
+  select:focus,input[type=text]:focus{border-color:var(--accent)}
+
+  button{
+    font-family:inherit;font-size:15px;font-weight:600;border:none;border-radius:11px;
+    padding:13px 18px;cursor:pointer;transition:filter .15s,opacity .15s;color:#fff;
+  }
+  button:disabled{opacity:.45;cursor:not-allowed}
+  #run{background:linear-gradient(135deg,#4c6fff,#6b5cff);width:100%;margin-top:16px;font-size:15.5px}
+  #run:not(:disabled):hover{filter:brightness(1.12)}
+
+  #progress{height:3px;background:var(--card2);border-radius:3px;margin-top:16px;overflow:hidden;display:none}
+  #progress.on{display:block}
+  #bar{height:100%;width:0;background:linear-gradient(90deg,#4c6fff,#6b5cff);transition:width .25s}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:18px}
+  .verdict{display:flex;align-items:center;gap:11px;font-size:18px;font-weight:700;margin-bottom:14px}
+  .dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .dot.ok{background:var(--ok);box-shadow:0 0 12px rgba(46,204,113,.6)}
+  .dot.bad{background:var(--bad);box-shadow:0 0 12px rgba(255,93,93,.6)}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+  .stat{background:var(--card2);border-radius:10px;padding:11px 13px}
+  .stat .k{font-size:11px;color:var(--muted);margin-bottom:3px}
+  .stat .v{font-size:15.5px;font-weight:600;font-variant-numeric:tabular-nums}
+
+  .reason{
+    background:rgba(255,93,93,.09);border-left:3px solid var(--bad);
+    border-radius:7px;padding:11px 13px;font-size:13.5px;margin-bottom:12px;
+  }
+  .reason b{display:block;color:#ff8f8f;font-size:11.5px;margin-bottom:4px;letter-spacing:.3px}
+  .hint{
+    background:rgba(240,180,41,.08);border-left:3px solid var(--warn);
+    border-radius:7px;padding:11px 13px;font-size:13.5px;
+  }
+  .hint b{display:block;color:var(--warn);font-size:11.5px;margin-bottom:4px}
+  .warns{margin-top:12px;font-size:12.5px;color:var(--warn)}
+
+  .previews{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+  @media(max-width:560px){.previews{grid-template-columns:1fr}}
+  .pv{background:var(--card2);border-radius:11px;padding:11px;text-align:center}
+  .pv .lbl{font-size:11px;color:var(--muted);margin-bottom:8px}
+  .pv .box{
+    background:
+      linear-gradient(45deg,#2a2d3d 25%,transparent 25%,transparent 75%,#2a2d3d 75%),
+      linear-gradient(45deg,#2a2d3d 25%,#22242f 25%,#22242f 75%,#2a2d3d 75%);
+    background-size:16px 16px;background-position:0 0,8px 8px;
+    border-radius:8px;padding:10px;display:flex;align-items:center;justify-content:center;
+    min-height:170px;
+  }
+  .pv img{max-width:100%;max-height:200px;display:block;image-rendering:auto}
+
+  #dl{background:#1f7a4d;width:100%;margin-top:14px;display:none}
+  #dl:hover{filter:brightness(1.1)}
+
+  details{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:0}
+  summary{padding:13px 17px;cursor:pointer;font-size:13px;color:var(--muted);user-select:none}
+  summary:hover{color:var(--fg)}
+  details[open] summary{border-bottom:1px solid var(--line)}
+  .json{
+    font:12px/1.55 Consolas,monospace;padding:14px 17px;overflow:auto;max-height:340px;
+    color:#a9b0c8;white-space:pre-wrap;word-break:break-word;
+  }
+  footer{text-align:center;color:#4d5166;font-size:11.5px;margin-top:34px;line-height:1.9}
+  footer a{color:#6b7ba8;text-decoration:none}
+  footer a:hover{text-decoration:underline}
+  .err{background:rgba(255,93,93,.1);border:1px solid rgba(255,93,93,.3);border-radius:9px;
+       padding:13px;font-size:13px;margin-top:16px;display:none;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>CoinDuel 美術檢查器</h1>
+    <div class="sub">拖入 AI 生成的 PNG，自動去背、質檢、加立體感</div>
+    <div class="badge">純瀏覽器執行 · 圖片不會上傳 · 不用安裝任何東西</div>
+  </header>
+
+  <div id="drop" role="button" tabindex="0">
+    <div id="dropIcon">🖼</div>
+    <div id="fileName" hidden></div>
+    <div id="dropText">拖放圖片到這裡，或<b>點擊選擇</b></div>
+    <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp" hidden>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>素材類型 (layer_type)</label>
+      <select id="preset">
+        <option value="coin_token">金幣 / coin_token · 1024² · 73–83%</option>
+        <option value="board_surface">棋盤底 / board_surface · 1920×1080 · 全出血</option>
+        <option value="board_frame">棋盤框 / board_frame · 1920×1080 · 挖窗</option>
+        <option value="ui_element">介面元素 / ui_element · 512² · 60–80%</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>檔名 (asset_id)</label>
+      <input type="text" id="assetId" placeholder="coin_gold_01" autocomplete="off">
+    </div>
+  </div>
+
+  <button id="run" disabled>開始檢查</button>
+  <div id="progress"><div id="bar"></div></div>
+  <div class="err" id="err"></div>
+
+  <div class="panel" id="result" hidden>
+    <div class="verdict" id="verdict"><span class="dot"></span><span></span></div>
+    <div id="reasonBox"></div>
+    <div class="stats" id="stats"></div>
+    <div class="previews">
+      <div class="pv"><div class="lbl">原始</div><div class="box"><img id="imgIn" alt=""></div></div>
+      <div class="pv"><div class="lbl">處理後（透明背景）</div><div class="box"><img id="imgOut" alt=""></div></div>
+    </div>
+    <button id="dl">下載成品 PNG</button>
+    <div class="warns" id="warns"></div>
+  </div>
+
+  <details id="jsonWrap" hidden>
+    <summary>檢視完整報告（n8n 收到的同一個 JSON）</summary>
+    <div class="json" id="jsonOut"></div>
+  </details>
+
+  <footer>
+    與 <code>coinduel_art_pipeline.py</code> 同一個演算法，23 項逐值比對通過<br>
+    規則來自 Google Sheet 的 Style_Rules · <a href="./">回編輯器</a>
+  </footer>
+</div>
+
+<script src="./art-core.js"></script>
+<script>
+(function(){
+  'use strict';
+
+  var $ = function(id){ return document.getElementById(id); };
+  var drop = $('drop'), fileInput = $('fileInput');
+  var fileNameEl = $('fileName'), dropText = $('dropText'), dropIcon = $('dropIcon');
+  var runBtn = $('run'), presetSel = $('preset'), assetIdEl = $('assetId');
+  var resultEl = $('result'), errEl = $('err');
+
+  var currentFile = null;
+  var currentImageEl = null;   // decoded <img>, reused for measurement
+  var lastObjectUrl = null;
+
+  var PRESET_LABELS = {
+    coin_token:'金幣 / coin_token · 1024² · 73–83%',
+    board_surface:'棋盤底 / board_surface · 1920×1080 · 全出血',
+    board_frame:'棋盤框 / board_frame · 1920×1080 · 挖窗',
+    ui_element:'介面元素 / ui_element · 512² · 60–80%'
+  };
+
+  // ---------------------------------------------------------------- loading
+  function pick(){ fileInput.click(); }
+  drop.addEventListener('click', pick);
+  drop.addEventListener('keydown', function(e){
+    if(e.key==='Enter'||e.key===' '){ e.preventDefault(); pick(); }
+  });
+
+  ['dragenter','dragover'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){
+      e.preventDefault(); e.stopPropagation(); drop.classList.add('over');
+    });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){
+      e.preventDefault(); e.stopPropagation(); drop.classList.remove('over');
+    });
+  });
+  drop.addEventListener('drop', function(e){
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if(f) accept(f);
+  });
+  // Dropping anywhere else should not navigate away from the page.
+  window.addEventListener('dragover', function(e){ e.preventDefault(); });
+  window.addEventListener('drop', function(e){ e.preventDefault(); });
+
+  fileInput.addEventListener('change', function(e){
+    var f = e.target.files && e.target.files[0];
+    if(f) accept(f);
+  });
+
+  function accept(file){
+    var ok = /^image\/(png|jpeg|webp)$/.test(file.type) ||
+             /\.(png|jpe?g|webp)$/i.test(file.name);
+    if(!ok){ showError('請拖入 PNG / JPG / WEBP 圖片。'); return; }
+    hideError();
+    currentFile = file;
+
+    var stem = file.name.replace(/\.[^.]+$/,'');
+    if(!assetIdEl.value.trim() || assetIdEl.dataset.auto !== '0'){
+      assetIdEl.value = stem; assetIdEl.dataset.auto = '1';
+    }
+    presetSel.value = guessPreset(stem);
+
+    fileNameEl.textContent = file.name;
+    fileNameEl.hidden = false;
+    dropText.textContent = '點擊可更換圖片';
+    dropIcon.textContent = '✅';
+    drop.classList.add('has-file');
+    runBtn.disabled = false;
+    resultEl.hidden = true;
+    $('jsonWrap').hidden = true;
+
+    var url = URL.createObjectURL(file);
+    if(lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
+    lastObjectUrl = url;
+    var im = new Image();
+    im.onload = function(){
+      currentImageEl = im;
+      $('imgIn').src = url;
+    };
+    im.onerror = function(){ showError('這張圖片無法解碼，可能已損壞。'); };
+    im.src = url;
+  }
+
+  assetIdEl.addEventListener('input', function(){ assetIdEl.dataset.auto='0'; });
+
+  function guessPreset(stem){
+    var n = stem.toLowerCase();
+    if(n.indexOf('frame')>=0) return 'board_frame';
+    if(n.indexOf('board')>=0 || n.indexOf('surface')>=0) return 'board_surface';
+    if(n.indexOf('ui_')>=0 || n.indexOf('button')>=0 || n.indexOf('pill')>=0) return 'ui_element';
+    return 'coin_token';
+  }
+
+  // ---------------------------------------------------- image <-> core glue
+  /**
+   * Read the decoded <img> into the Float32Array format art-core expects.
+   * Uses an OffscreenCanvas where available, and forces straight alpha
+   * (getImageData is never premultiplied).
+   */
+  function loadPixels(im){
+    var canvas = document.createElement('canvas');
+    canvas.width = im.naturalWidth;
+    canvas.height = im.naturalHeight;
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(im, 0, 0);
+    var data = ctx.getImageData(0,0,canvas.width,canvas.height).data;
+    var d = new Float32Array(data.length);
+    for(var i=0;i<data.length;i++) d[i] = data[i];
+    return { w:canvas.width, h:canvas.height, d:d };
+  }
+
+  /** High-quality downscale for the final asset, via the browser's own filter. */
+  function canvasResizer(img, nw, nh){
+    var src = document.createElement('canvas');
+    src.width = img.w; src.height = img.h;
+    var sctx = src.getContext('2d');
+    var id = sctx.createImageData(img.w, img.h);
+    // Float32Array is already 0..255 straight alpha; clamp into the byte view.
+    for(var i=0;i<img.d.length;i++){
+      var v = img.d[i];
+      id.data[i] = v<0?0:v>255?255:v;
+    }
+    sctx.putImageData(id, 0, 0);
+
+    var dst = document.createElement('canvas');
+    dst.width = nw; dst.height = nh;
+    var dctx = dst.getContext('2d');
+    dctx.imageSmoothingEnabled = true;
+    dctx.imageSmoothingQuality = 'high';
+    dctx.drawImage(src, 0, 0, nw, nh);
+    var out = dctx.getImageData(0,0,nw,nh).data;
+    var od = new Float32Array(out.length);
+    for(var j=0;j<out.length;j++) od[j] = out[j];
+    return { w:nw, h:nh, d:od };
+  }
+
+  /** Write a core image back out as a PNG data URL. */
+  function toDataUrl(img){
+    var canvas = document.createElement('canvas');
+    canvas.width = img.w; canvas.height = img.h;
+    var ctx = canvas.getContext('2d');
+    var id = ctx.createImageData(img.w, img.h);
+    for(var i=0;i<img.d.length;i++){
+      var v = img.d[i];
+      id.data[i] = v<0?0:v>255?255:v;
+    }
+    ctx.putImageData(id, 0, 0);
+    return canvas.toDataURL('image/png');
+  }
+
+  // --------------------------------------------------------------- run
+  runBtn.addEventListener('click', function(){
+    if(!currentFile || !currentImageEl){ showError('先選一張圖片。'); return; }
+    hideError();
+    resultEl.hidden = true;
+    $('jsonWrap').hidden = true;
+
+    runBtn.disabled = true;
+    runBtn.textContent = '檢查中…';
+    $('progress').classList.add('on');
+    $('bar').style.width = '8%';
+
+    // Let the progress bar paint before the (blocking) maths starts.
+    setTimeout(function(){
+      try{
+        artCore.setResizer(canvasResizer);
+
+        var preset = presetSel.value;
+        var input = loadPixels(currentImageEl);
+        $('bar').style.width = '35%';
+
+        var report = artCore.runPipeline(input, preset, {
+          asset_id: assetIdEl.value.trim() || currentFile.name.replace(/\.[^.]+$/,''),
+          theme: 'classic'
+        });
+
+        $('bar').style.width = '85%';
+        render(report);
+
+        // Persist locally so the verdict survives a refresh / can be shared.
+        try{
+          localStorage.setItem('coinduel:last', JSON.stringify({
+            asset_id: report.asset_id, status: report.status,
+            metrics: report.metrics, at: Date.now()
+          }));
+        }catch(_){}
+      }catch(err){
+        showError('處理失敗：' + (err && err.message ? err.message : err));
+      }finally{
+        $('bar').style.width = '100%';
+        setTimeout(function(){ $('progress').classList.remove('on'); $('bar').style.width='0'; }, 350);
+        runBtn.disabled = false;
+        runBtn.textContent = '開始檢查';
+      }
+    }, 40);
+  });
+
+  // ------------------------------------------------------------ rendering
+  function render(r){
+    resultEl.hidden = false;
+
+    var ok = r.status === 'Done';
+    var verdict = $('verdict');
+    verdict.innerHTML = '';
+    var dot = document.createElement('span');
+    dot.className = 'dot ' + (ok ? 'ok' : 'bad');
+    var txt = document.createElement('span');
+    txt.textContent = ok ? '通過質檢' : '未通過';
+    txt.style.color = ok ? 'var(--ok)' : 'var(--bad)';
+    verdict.appendChild(dot); verdict.appendChild(txt);
+
+    var reasonBox = $('reasonBox');
+    reasonBox.innerHTML = '';
+    if(!ok && r.error_reason){
+      var rb = document.createElement('div'); rb.className='reason';
+      var h = document.createElement('b'); h.textContent='原因';
+      rb.appendChild(h);
+      rb.appendChild(document.createTextNode(r.error_reason));
+      reasonBox.appendChild(rb);
+
+      var hint = document.createElement('div'); hint.className='hint';
+      var hb = document.createElement('b'); hb.textContent='怎麼改';
+      hint.appendChild(hb);
+      hint.appendChild(document.createTextNode(hintFor(r.error_reason)));
+      reasonBox.appendChild(hint);
+    }
+
+    var m = r.metrics || {};
+    var stats = $('stats');
+    stats.innerHTML = '';
+    var rows = [
+      ['填充率', m.fill_pct + '  (' + pct(m.fill_min) + '–' + pct(m.fill_max) + ')'],
+      ['尺寸', m.width + ' × ' + m.height],
+      ['寬高比', Number(m.aspect).toFixed(3)],
+      ['居中偏差', Number(m.center_dev||0).toFixed(3)],
+      ['實心度', Number(m.solidity||0).toFixed(3)],
+      ['耗時', (r.elapsed_ms||0) + ' ms']
+    ];
+    rows.forEach(function(row){
+      var d = document.createElement('div'); d.className='stat';
+      var k = document.createElement('div'); k.className='k'; k.textContent = row[0];
+      var v = document.createElement('div'); v.className='v'; v.textContent = row[1];
+      d.appendChild(k); d.appendChild(v); stats.appendChild(d);
+    });
+
+    if(ok && r.image){
+      var outUrl = toDataUrl(r.image);
+      $('imgOut').src = outUrl;
+      var dl = $('dl');
+      dl.style.display = 'block';
+      dl.onclick = function(){
+        var a = document.createElement('a');
+        a.href = outUrl;
+        a.download = (r.asset_id || 'asset') + '.png';
+        a.click();
+      };
+    }else{
+      $('imgOut').src = '';
+      $('dl').style.display = 'none';
+    }
+
+    var warns = r.warnings || [];
+    $('warns').innerHTML = '';
+    if(warns.length){
+      $('warns').textContent = '提醒：' + warns.join(' · ');
+    }
+
+    // full report, minus the raw pixel buffer
+    var clone = JSON.parse(JSON.stringify(r, function(k, v){
+      return k === 'image' ? undefined : v;
+    }));
+    $('jsonOut').textContent = JSON.stringify(clone, null, 2);
+    $('jsonWrap').hidden = false;
+
+    resultEl.scrollIntoView({ behavior:'smooth', block:'nearest' });
+  }
+
+  function pct(v){
+    if(v === undefined || v === null) return '?';
+    return Math.round(v*100) + '%';
+  }
+
+  function hintFor(reason){
+    var s = String(reason).toLowerCase();
+    if(s.indexOf('fill ratio')>=0 && s.indexOf('below')>=0)
+      return '主體太小。提示詞加上「filling most of the frame」，或讓生成器把主體畫大一點。';
+    if(s.indexOf('fill ratio')>=0 && s.indexOf('above')>=0)
+      return '主體太大、貼到邊緣了。加上「centered, with margin around it」。';
+    if(s.indexOf('aspect')>=0)
+      return '寬高比不對。檢查生成器的輸出尺寸是否等於規格要求。';
+    if(s.indexOf('off-centre')>=0 || s.indexOf('off-center')>=0)
+      return '主體偏位。加上「centered composition」。';
+    if(s.indexOf('clipped')>=0 || s.indexOf('edge')>=0)
+      return '主體被畫布切到。加上「centered and not cropped」。';
+    if(s.indexOf('solidity')>=0)
+      return '形狀太破碎或空心。讓主體是完整實心塊面。';
+    return '對照規格說明，修正上面這條原因後重新生成。';
+  }
+
+  function showError(msg){ errEl.textContent = msg; errEl.style.display = 'block'; }
+  function hideError(){ errEl.style.display = 'none'; }
+
+  // Expose a couple of internals for manual poking in the console.
+  window.coinDuelChecker = {
+    run: function(img, preset, over){ artCore.setResizer(canvasResizer); return artCore.runPipeline(img, preset, over); },
+    presets: artCore.PRESETS
+  };
+})();
+</script>
+</body>
+</html>
