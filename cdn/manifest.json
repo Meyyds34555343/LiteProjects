@@ -1,12 +1,12 @@
 {
-  "version": 20,
+  "version": 21,
   "baseUrl": "",
   "memeConfig": "memes/index.json",
   "levelConfig": "levels/demo_behavior.json",
   "items": [
     {
       "filename": "memes/index.json",
-      "hash": "n8n-bomb-mwbdubk3",
+      "hash": "art-coin_gold_01-mwpa4u2r",
       "kind": "meme"
     },
     {
@@ -232,6 +232,18 @@
       "filename": "levels/levels.json",
       "hash": "level-levels-v1",
       "kind": "level"
+    },
+    {
+      "filename": "memes/coin_gold_01.json",
+      "hash": "art-coin_gold_01-mwpa4u2r",
+      "kind": "meme"
+    },
+    {
+      "filename": "textures/coin_gold_01.png",
+      "hash": "art-coin_gold_01-mwpa4u2r",
+      "kind": "texture",
+      "url": "https://cdn.jsdelivr.net/gh/Meyyds34555343/LiteProjects@behavior-scratch/cdn/textures/coin_gold_01.png",
+      "theme": "classic"
     }
   ]
 }
