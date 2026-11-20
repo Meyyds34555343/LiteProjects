@@ -107,6 +107,18 @@
         "default": "textures/bomb.png",
         "idle": "textures/bomb.png"
       }
+    },
+    {
+      "id": "coin_gold_01",
+      "behavior": "FreezeBehavior",
+      "behaviors": [
+        "FreezeBehavior"
+      ],
+      "radius": 32,
+      "textures": {
+        "default": "textures/coin_gold_01.png",
+        "idle": "textures/coin_gold_01.png"
+      }
     }
   ]
 }
