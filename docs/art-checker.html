@@ -124,6 +124,22 @@
     <div class="badge">純瀏覽器執行 · 圖片不會上傳 · 不用安裝任何東西</div>
   </header>
 
+  <details id="howto" style="margin-bottom:16px">
+    <summary>▶ 看 10 秒示範影片（怎麼用）</summary>
+    <div style="padding:14px 17px">
+      <video controls playsinline preload="none" poster="./demo/poster.png"
+             style="width:100%;border-radius:10px;display:block;background:#000">
+        <source src="./demo/art-checker-demo.mp4" type="video/mp4">
+        你的瀏覽器不支援內嵌影片，可
+        <a href="./demo/art-checker-demo.mp4">直接下載 MP4</a>。
+      </video>
+      <div style="font-size:12px;color:var(--muted);margin-top:9px;line-height:1.7">
+        流程：拖入圖片 → 選素材類型（自動填入檔名）→ 按「開始檢查」
+        → 通過就下載成品；未通過會告訴你原因和怎麼改。
+      </div>
+    </div>
+  </details>
+
   <div id="drop" role="button" tabindex="0">
     <div id="dropIcon">🖼</div>
     <div id="fileName" hidden></div>
